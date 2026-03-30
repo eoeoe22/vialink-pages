@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R2R 래더 DAC 시뮬레이터</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- SweetAlert2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding-bottom: 50px;
+        }
+        .resistor-box {
+            width: 70px;
+            height: 75px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            user-select: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .resistor-box:active {
+            transform: scale(0.95);
+        }
+        .resistor-on {
+            background-color: #0d6efd;
+            color: white;
+            border: 2px solid #0a58ca;
+            box-shadow: 0 0 10px rgba(13, 110, 253, 0.5);
+        }
+        .resistor-off {
+            background-color: #e9ecef;
+            color: #6c757d;
+            border: 2px solid #dee2e6;
+        }
+        .val-text {
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        .state-text {
+            font-size: 1.1rem;
+            font-weight: 900;
+        }
+        .bit-label {
+            font-size: 0.6rem;
+            opacity: 0.8;
+        }
+        #slider-input {
+            height: 1.5rem;
+        }
+        #oscilloscope {
+            width: 100%;
+            height: 250px;
+            background-color: #111;
+            border-radius: 4px;
+            display: block;
+        }
+        /* 슬라이더 강조색 설정 */
+        #speed-input::-webkit-slider-thumb {
+            background: #198754;
+        }
+        #osc-speed-input::-webkit-slider-thumb {
+            background: #6c757d;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container mt-4">
+    <!-- 상단: 모드 선택 및 타이틀 -->
+    <div class="text-center mb-4">
+        <h2 id="mode-title" class="fw-bold"><i class="bi bi-sliders"></i> 4비트 R2R 래더 DAC 시뮬레이터</h2>
+        <p class="text-muted">비트 수가 늘어날수록 디지털 값이 얼마나 촘촘한 아날로그 값이 되는지 확인해보세요.</p>
+        
+        <!-- 비트 선택 버튼 그룹 -->
+        <div class="btn-group shadow-sm mt-2" role="group" aria-label="Bit mode selection">
+            <input type="radio" class="btn-check" name="btnradio" id="btn-4bit" autocomplete="off" checked onchange="setMode(4)">
+            <label class="btn btn-outline-primary fw-bold px-4" for="btn-4bit">4비트 (0~15)</label>
+
+            <input type="radio" class="btn-check" name="btnradio" id="btn-8bit" autocomplete="off" onchange="setMode(8)">
+            <label class="btn btn-outline-primary fw-bold px-4" for="btn-8bit">8비트 (0~255)</label>
+
+            <input type="radio" class="btn-check" name="btnradio" id="btn-16bit" autocomplete="off" onchange="setMode(16)">
+            <label class="btn btn-outline-primary fw-bold px-4" for="btn-16bit">16비트 (0~65535)</label>
+        </div>
+    </div>
+
+    <!-- 1. 저항기 (비트) -->
+    <div class="card shadow-sm mb-3">
+        <div class="card-header bg-dark text-white text-center" id="card-header-text">
+            <strong><i class="bi bi-motherboard"></i> 4개의 켜고 끌 수 있는 저항기</strong>
+        </div>
+        <div class="card-body">
+            <div id="resistor-container" class="d-flex flex-wrap gap-2 justify-content-center">
+                <!-- JavaScript를 통해 동적으로 생성됩니다. -->
+            </div>
+            <div class="text-center mt-3 text-muted small">
+                <i class="bi bi-info-circle"></i> 위 상자를 클릭하여 개별 저항기를 직접 켜거나 끌 수 있습니다.
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 오실로스코프 (펼치기/접기 아코디언) -->
+    <div class="accordion mb-4 shadow-sm" id="oscAccordion">
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="headingOsc">
+                <button class="accordion-button bg-light fw-bold text-dark" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOsc" aria-expanded="true" aria-controls="collapseOsc">
+                    <i class="bi bi-activity text-primary me-2"></i> 오실로스코프 그래프 (계단 현상 확인하기)
+                </button>
+            </h2>
+            <div id="collapseOsc" class="accordion-collapse collapse show" aria-labelledby="headingOsc" data-bs-parent="#oscAccordion">
+                <div class="accordion-body p-3 bg-dark">
+                    <!-- HTML5 Canvas 오실로스코프 -->
+                    <canvas id="oscilloscope" width="800" height="250" class="shadow"></canvas>
+                    
+                    <!-- 오실로스코프 스크롤 속도 조절 (1.0 ~ 1.5로 제한) -->
+                    <div class="d-flex justify-content-center align-items-center gap-3 w-75 mx-auto mt-3">
+                        <label for="osc-speed-input" class="form-label fw-bold mb-0 text-nowrap text-light"><i class="bi bi-speedometer2"></i> 스크롤 속도 :</label>
+                        <input type="range" class="form-range" id="osc-speed-input" min="1.0" max="1.5" step="0.1" value="1.0">
+                        <span id="osc-speed-label" class="badge bg-secondary fs-6" style="min-width: 65px;">1.0 x</span>
+                    </div>
+
+                    <div class="text-center text-light small mt-2">
+                        <i class="bi bi-exclamation-triangle-fill text-warning"></i> 4비트 모드에서 사인파를 켜면 투박한 <b>계단 현상(Quantization Error)</b>이 뚜렷하게 보입니다!
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 숫자 창 및 슬라이더 -->
+    <div class="card shadow-sm mb-4 border-primary">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-3 text-center text-md-start mb-3 mb-md-0">
+                    <label id="num-label" for="num-input" class="form-label fw-bold"><i class="bi bi-123"></i> 출력 값 (0 ~ 15)</label>
+                    <input type="number" id="num-input" class="form-control form-control-lg text-center fw-bold text-primary" min="0" max="15" value="0">
+                </div>
+                <div class="col-md-9">
+                    <label for="slider-input" class="form-label fw-bold"><i class="bi bi-sliders2"></i> 아날로그 크기 조절 (슬라이더)</label>
+                    <input type="range" class="form-range" id="slider-input" min="0" max="15" value="0">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. 하단: 사인파(Sine Wave) 컨트롤러 -->
+    <div class="card shadow-sm bg-light">
+        <div class="card-body text-center">
+            <h5 class="fw-bold mb-3"><i class="bi bi-play-circle"></i> 자동 재생 컨트롤</h5>
+            <button id="sine-btn" class="btn btn-outline-success btn-lg px-5 shadow-sm rounded-pill mb-3 fw-bold" onclick="toggleSineWave()">
+                <i class="bi bi-wave-pulse"></i> 사인파 보기
+            </button>
+            
+            <!-- 사인파 속도 조절 슬라이더 (0.1 ~ 10.0) -->
+            <div class="d-flex justify-content-center align-items-center gap-3 w-75 mx-auto">
+                <label for="speed-input" class="form-label fw-bold mb-0 text-nowrap"><i class="bi bi-lightning-charge"></i> 사인파 속도 :</label>
+                <input type="range" class="form-range" id="speed-input" min="0.1" max="10.0" step="0.1" value="1.0">
+                <span id="speed-label" class="badge bg-success fs-6" style="min-width: 65px;">1.0 x</span>
+            </div>
+            <p class="mt-3 text-muted small mb-0"><i class="bi bi-info-circle"></i> 파형이 오르내리는 속도를 10배속까지 조절할 수 있습니다.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<!-- SweetAlert2 JS -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+    let currentBits = 4;
+    let maxVal = 15;
+    let currentValue = 0;
+    
+    // 사인파 애니메이션 변수
+    let isSineWaveActive = false;
+    let animationFrameId;
+    let lastTime = 0;
+    let currentPhase = 0; 
+
+    // 오실로스코프 스크롤 속도 변수
+    let oscSpeed = 1.0;
+    let oscAccumulator = 0.0;
+
+    // DOM Elements
+    const resistorContainer = document.getElementById('resistor-container');
+    const numInput = document.getElementById('num-input');
+    const sliderInput = document.getElementById('slider-input');
+    const sineBtn = document.getElementById('sine-btn');
+    
+    const speedInput = document.getElementById('speed-input');
+    const speedLabel = document.getElementById('speed-label');
+    const oscSpeedInput = document.getElementById('osc-speed-input');
+    const oscSpeedLabel = document.getElementById('osc-speed-label');
+    
+    // 오실로스코프 Canvas
+    const canvas = document.getElementById('oscilloscope');
+    const ctx = canvas.getContext('2d');
+    const historyData = new Array(canvas.width).fill(0);
+
+    // ==========================================
+    // 0. 속도 조절 슬라이더 이벤트
+    // ==========================================
+    // 사인파 생성 속도
+    speedInput.addEventListener('input', (e) => {
+        const speed = parseFloat(e.target.value).toFixed(1);
+        speedLabel.innerText = `${speed} x`;
+    });
+
+    // 오실로스코프 스크롤 속도
+    oscSpeedInput.addEventListener('input', (e) => {
+        oscSpeed = parseFloat(e.target.value);
+        oscSpeedLabel.innerText = `${oscSpeed.toFixed(1)} x`;
+    });
+
+    // ==========================================
+    // 1. 모드 변경 (4, 8, 16비트)
+    // ==========================================
+    function setMode(bits) {
+        if (isSineWaveActive) {
+            toggleSineWave(); 
+        }
+
+        currentBits = bits;
+        maxVal = Math.pow(2, bits) - 1;
+
+        document.getElementById('mode-title').innerHTML = `<i class="bi bi-sliders"></i> ${bits}비트 R2R 래더 DAC 시뮬레이터`;
+        document.getElementById('card-header-text').innerHTML = `<strong><i class="bi bi-motherboard"></i> ${bits}개의 켜고 끌 수 있는 저항기</strong>`;
+        document.getElementById('num-label').innerHTML = `<i class="bi bi-123"></i> 출력 값 (0 ~ ${maxVal})`;
+
+        numInput.max = maxVal;
+        sliderInput.max = maxVal;
+
+        initResistors();
+        updateUI(0);
+        historyData.fill(0);
+
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'info',
+            title: `${bits}비트 모드로 변경되었습니다.`,
+            showConfirmButton: false,
+            timer: 1500
+        });
+    }
+
+    // ==========================================
+    // 2. 초기 저항기 UI 동적 생성
+    // ==========================================
+    function initResistors() {
+        resistorContainer.innerHTML = '';
+
+        for (let i = currentBits - 1; i >= 0; i--) {
+            const bitValue = Math.pow(2, i);
+            
+            const box = document.createElement('div');
+            box.id = `res-${i}`;
+            box.className = 'resistor-box resistor-off';
+            box.onclick = () => toggleBit(i);
+
+            box.innerHTML = `
+                <span class="bit-label">Bit ${i}</span>
+                <span class="state-text" id="state-${i}">OFF</span>
+                <span class="val-text">${bitValue}</span>
+            `;
+            
+            resistorContainer.appendChild(box);
+        }
+    }
+
+    // ==========================================
+    // 3. 값 동기화 및 UI 업데이트
+    // ==========================================
+    function updateUI(newVal, source = '') {
+        currentValue = Math.floor(newVal);
+
+        if (currentValue < 0) currentValue = 0;
+        if (currentValue > maxVal) currentValue = maxVal;
+
+        if (source !== 'input') numInput.value = currentValue;
+        if (source !== 'slider') sliderInput.value = currentValue;
+
+        for (let i = currentBits - 1; i >= 0; i--) {
+            const bit = (currentValue >> i) & 1;
+            const box = document.getElementById(`res-${i}`);
+            const stateText = document.getElementById(`state-${i}`);
+
+            if (bit === 1) {
+                box.classList.add('resistor-on');
+                box.classList.remove('resistor-off');
+                stateText.innerText = 'ON';
+            } else {
+                box.classList.add('resistor-off');
+                box.classList.remove('resistor-on');
+                stateText.innerText = 'OFF';
+            }
+        }
+    }
+
+    function toggleBit(bitIndex) {
+        if (isSineWaveActive) return;
+
+        const bitValue = Math.pow(2, bitIndex);
+        const currentBit = (currentValue >> bitIndex) & 1;
+
+        if (currentBit === 1) {
+            updateUI(currentValue - bitValue, 'click');
+        } else {
+            updateUI(currentValue + bitValue, 'click');
+        }
+    }
+
+    numInput.addEventListener('change', (e) => {
+        let val = parseInt(e.target.value);
+        if (isNaN(val) || val < 0 || val > maxVal) {
+            e.target.value = currentValue;
+        } else {
+            updateUI(val, 'input');
+        }
+    });
+
+    sliderInput.addEventListener('input', (e) => {
+        updateUI(parseInt(e.target.value), 'slider');
+    });
+
+    // ==========================================
+    // 4. Sine Wave 로직 (속도 조절 적용)
+    // ==========================================
+    function toggleSineWave() {
+        isSineWaveActive = !isSineWaveActive;
+
+        if (isSineWaveActive) {
+            sineBtn.classList.replace('btn-outline-success', 'btn-danger');
+            sineBtn.innerHTML = '<i class="bi bi-stop-circle"></i> 사인파 중지';
+            numInput.disabled = true;
+            sliderInput.disabled = true;
+            document.querySelectorAll('input[name="btnradio"]').forEach(btn => btn.disabled = true);
+
+            lastTime = Date.now();
+            currentPhase = 0; 
+            animateSineWave();
+        } else {
+            sineBtn.classList.replace('btn-danger', 'btn-outline-success');
+            sineBtn.innerHTML = '<i class="bi bi-wave-pulse"></i> 사인파 보기';
+            numInput.disabled = false;
+            sliderInput.disabled = false;
+            document.querySelectorAll('input[name="btnradio"]').forEach(btn => btn.disabled = false);
+            cancelAnimationFrame(animationFrameId);
+        }
+    }
+
+    function animateSineWave() {
+        if (!isSineWaveActive) return;
+
+        const now = Date.now();
+        const deltaTime = now - lastTime;
+        lastTime = now;
+
+        const baseSpeed = (Math.PI * 2) / 5000;
+        const speedMultiplier = parseFloat(speedInput.value);
+
+        currentPhase += baseSpeed * speedMultiplier * deltaTime;
+        
+        if (currentPhase > Math.PI * 2) {
+            currentPhase -= Math.PI * 2;
+        }
+
+        const sineValue = Math.round(((Math.sin(currentPhase - Math.PI / 2) + 1) / 2) * maxVal);
+
+        updateUI(sineValue, 'animation');
+        animationFrameId = requestAnimationFrame(animateSineWave);
+    }
+
+    // ==========================================
+    // 5. 오실로스코프 (Canvas) 드로잉 루프
+    // ==========================================
+    function drawOscilloscope() {
+        const normalizedValue = currentValue / maxVal;
+        
+        // 스크롤 속도에 비례하여 데이터를 배열에 푸시 (가로 스크롤 속도 조절)
+        oscAccumulator += oscSpeed;
+        while (oscAccumulator >= 1.0) {
+            historyData.push(normalizedValue);
+            if (historyData.length > canvas.width) {
+                historyData.shift();
+            }
+            oscAccumulator -= 1.0;
+        }
+
+        // 캔버스 초기화
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 그리드 (눈금선) 그리기
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for(let i = 1; i < 4; i++) {
+            let yPos = canvas.height * (i / 4);
+            ctx.moveTo(0, yPos);
+            ctx.lineTo(canvas.width, yPos);
+        }
+        ctx.stroke();
+
+        // 파형 그리기
+        ctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        
+        for (let i = 0; i < historyData.length; i++) {
+            const x = i;
+            const y = canvas.height - (historyData[i] * canvas.height); 
+            
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        ctx.stroke();
+
+        requestAnimationFrame(drawOscilloscope);
+    }
+
+    // 초기화 실행
+    initResistors();
+    updateUI(0);
+    drawOscilloscope();
+
+</script>
+</body>
+</html>
