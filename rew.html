@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>웹 주파수 응답 측정 도구 (Glassmorphism)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+<script src="
+https://cdn.jsdelivr.net/npm/sweetalert2@11.26.24/dist/sweetalert2.all.min.js
+"></script>
+    <style>
+        /* 움직이는 은은한 배경 그라데이션 */
+        body { 
+            background: linear-gradient(-45deg, #f3e8ff, #e0e7ff, #fae8ff, #f0fdfa);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            color: #374151; /* gray-700 */
+        }
+        
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* 글래스모피즘 카드 스타일 */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.45);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+        }
+
+        /* 캔버스 자체 글래스 효과 */
+        canvas { 
+            background: rgba(255, 255, 255, 0.3); 
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 0.75rem; 
+            width: 100%; 
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.02);
+        }
+
+        /* 미터 컨테이너 및 바 */
+        .meter-container { 
+            background: rgba(255, 255, 255, 0.5); 
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: inset 0 1px 4px rgba(0,0,0,0.1);
+            height: 20px; 
+            border-radius: 10px; 
+            overflow: hidden; 
+        }
+        .meter-bar { 
+            height: 100%; 
+            background: linear-gradient(90deg, #34d399, #fbbf24, #f87171); 
+            width: 0%; 
+            transition: width 0.1s ease-out; 
+        }
+        
+        /* 커스텀 슬라이더 (라이트 모드) */
+        input[type=range] {
+            accent-color: #6366f1; /* Indigo-500 */
+            height: 6px;
+            background: rgba(255,255,255,0.6);
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+        
+        /* 숫자 입력 화살표 숨기기 */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; margin: 0; 
+        }
+        input[type=number] { -moz-appearance: textfield; }
+    </style>
+</head>
+<body class="p-4 sm:p-8 max-w-5xl mx-auto font-sans min-h-screen">
+
+    <header class="mb-8 border-b border-gray-300/50 pb-4">
+        <h1 class="text-4xl font-extrabold text-gray-800 tracking-tight">음향 주파수 응답 측정 도구</h1>
+        <p class="text-gray-600 mt-2 font-medium">Web Audio API 기반 실시간 분석 및 15밴드 스펙트럼 (Glass Theme)</p>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <!-- 1. 톤 제너레이터 -->
+        <section class="glass-card p-6 rounded-2xl">
+            <h2 class="text-xl font-bold mb-4 text-indigo-600 flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                1. 톤 제너레이터 (테스트 톤)
+            </h2>
+            <div class="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-4 mb-5">
+                <button id="btnTone" class="w-full sm:w-auto px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 shadow-md shadow-indigo-200 text-white rounded-lg font-semibold transition whitespace-nowrap">
+                    재생 시작
+                </button>
+                <div class="flex items-center bg-white/60 rounded-lg border border-white px-3 py-2 w-full shadow-sm">
+                    <input type="number" id="inputFreq" value="1000" min="20" max="20000" 
+                           class="w-full bg-transparent text-gray-800 font-mono text-right text-lg outline-none pr-2 font-semibold"
+                           placeholder="1000">
+                    <span class="text-gray-500 font-mono font-medium">Hz</span>
+                </div>
+            </div>
+            <input type="range" id="sliderFreq" min="0" max="1000" class="w-full rounded-lg appearance-none cursor-pointer">
+            <div class="flex justify-between text-xs text-gray-500 mt-2 font-medium">
+                <span>20Hz</span>
+                <span>1kHz</span>
+                <span>20kHz</span>
+            </div>
+        </section>
+
+        <!-- 2. 마이크 설정 및 레벨 미터 -->
+        <section class="glass-card p-6 rounded-2xl">
+            <h2 class="text-xl font-bold mb-4 text-emerald-600 flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                2. 마이크 입력 분석
+            </h2>
+            <div class="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-4 mb-5">
+                <button id="btnMic" class="w-full sm:w-auto px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 shadow-md shadow-emerald-200 text-white rounded-lg font-semibold transition">
+                    마이크 켜기
+                </button>
+                <div id="micStatus" class="text-sm text-gray-500 font-medium px-2">대기 중...</div>
+            </div>
+            
+            <div class="mb-2 text-sm font-bold text-gray-700">입력 레벨 (RMS)</div>
+            <div class="meter-container mb-2">
+                <div id="levelMeter" class="meter-bar"></div>
+            </div>
+        </section>
+    </div>
+
+    <!-- 실시간 스펙트럼 (RTA) -->
+    <section class="glass-card p-6 rounded-2xl mb-6">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-5 gap-4">
+            <h2 class="text-xl font-bold text-purple-600 flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                실시간 주파수 대역 (RTA)
+            </h2>
+            
+            <!-- RTA 뷰 모드 스위치 -->
+            <div class="flex space-x-1 bg-white/40 rounded-xl p-1 border border-white/60 shadow-inner">
+                <label class="cursor-pointer flex items-center px-4 py-1.5 rounded-lg transition-all bg-white/80 shadow-sm text-gray-900 rta-mode-label">
+                    <input type="radio" name="rtaMode" value="graph" class="hidden" checked>
+                    <span class="text-sm font-bold rta-mode-text">그래프 (Line)</span>
+                </label>
+                <label class="cursor-pointer flex items-center px-4 py-1.5 rounded-lg transition-all bg-transparent hover:bg-white/40 text-gray-500 rta-mode-label">
+                    <input type="radio" name="rtaMode" value="bars" class="hidden">
+                    <span class="text-sm font-bold rta-mode-text">15밴드 (Meter)</span>
+                </label>
+            </div>
+        </div>
+        <canvas id="rtaCanvas" height="280"></canvas>
+    </section>
+
+    <!-- 측정 기능 -->
+    <section class="glass-card p-6 rounded-2xl mb-6">
+        <h2 class="text-xl font-bold mb-3 text-amber-600 flex items-center">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            3. 주파수 응답 측정 (Sine Sweep)
+        </h2>
+        <p class="text-sm text-gray-600 mb-5 font-medium">
+            20Hz부터 20kHz까지의 소리를 스윕(Sweep) 재생하며 마이크로 들어오는 각 대역의 최대 에너지를 기록합니다.
+        </p>
+        <div class="flex items-center space-x-4 mb-4">
+            <button id="btnMeasure" class="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 shadow-md shadow-amber-200 text-white rounded-lg font-bold transition disabled:opacity-50 disabled:cursor-not-allowed">
+                측정 실행 (5초)
+            </button>
+            <div id="measureStatus" class="text-sm font-bold text-amber-600 hidden animate-pulse">측정 중... 조용히 해주세요.</div>
+        </div>
+        <div class="w-full bg-white/50 rounded-full h-3 border border-white/60 hidden shadow-inner" id="measureProgressContainer">
+            <div class="bg-gradient-to-r from-amber-400 to-orange-500 h-full rounded-full transition-all duration-75" id="measureProgressBar" style="width: 0%"></div>
+        </div>
+    </section>
+
+    <!-- 측정 결과 -->
+    <section class="glass-card p-6 rounded-2xl mb-10">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-5 gap-3">
+            <h2 class="text-xl font-bold text-pink-600 flex items-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                4. 측정 결과 (Frequency Response)
+            </h2>
+            <label class="flex items-center space-x-2 cursor-pointer bg-white/50 px-3 py-1.5 rounded-lg border border-white/60 shadow-sm">
+                <input type="checkbox" id="chkSmooth" class="form-checkbox h-4 w-4 text-pink-500 rounded bg-white border-gray-300 focus:ring-pink-500">
+                <span class="text-sm font-bold text-gray-700">스무딩 적용 (Smoothing)</span>
+            </label>
+        </div>
+        <canvas id="resultCanvas" height="280"></canvas>
+        <div class="text-center text-xs text-gray-500 mt-3 font-medium">X축: 주파수 (로그 스케일 20Hz ~ 20kHz) / Y축: 상대적 음량 (dB)</div>
+    </section>
+
+    <script>
+        // --- Web Audio API 전역 변수 ---
+        let audioCtx;
+        let toneOsc, toneGain;
+        let isTonePlaying = false;
+        
+        let micStream, micSource, analyser, dataArray;
+        let isMicActive = false, animationId;
+        
+        let isMeasuring = false;
+        let peakHoldData = []; 
+        const fftSize = 4096;
+
+        // --- DOM 요소 ---
+        const inputFreq = document.getElementById('inputFreq');
+        const sliderFreq = document.getElementById('sliderFreq');
+        const btnTone = document.getElementById('btnTone');
+        const btnMic = document.getElementById('btnMic');
+        const micStatus = document.getElementById('micStatus');
+        const levelMeter = document.getElementById('levelMeter');
+        const rtaCanvas = document.getElementById('rtaCanvas');
+        const rtaCtx = rtaCanvas.getContext('2d');
+        const resultCanvas = document.getElementById('resultCanvas');
+        const resultCtx = resultCanvas.getContext('2d');
+        const btnMeasure = document.getElementById('btnMeasure');
+        const measureStatus = document.getElementById('measureStatus');
+        const measureProgressContainer = document.getElementById('measureProgressContainer');
+        const measureProgressBar = document.getElementById('measureProgressBar');
+        const chkSmooth = document.getElementById('chkSmooth');
+        const rtaRadios = document.querySelectorAll('input[name="rtaMode"]');
+
+        // --- 로그 스케일 변환 관련 변수 및 함수 ---
+        const minFreqHz = 20;
+        const maxFreqHz = 20000;
+        const minLog = Math.log10(minFreqHz);
+        const maxLog = Math.log10(maxFreqHz);
+        const logRange = maxLog - minLog;
+
+        function freqToSlider(freq) {
+            return ((Math.log10(freq) - minLog) / logRange) * 1000;
+        }
+
+        function sliderToFreq(sliderVal) {
+            return Math.pow(10, minLog + (sliderVal / 1000) * logRange);
+        }
+
+        sliderFreq.value = freqToSlider(1000);
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        // --- 1. 톤 제너레이터 ---
+        function setFrequency(val, updateSlider = true) {
+            let freq = Math.max(minFreqHz, Math.min(maxFreqHz, Number(val)));
+            freq = Math.round(freq); 
+            
+            inputFreq.value = freq;
+            if (updateSlider) sliderFreq.value = freqToSlider(freq);
+
+            if (isTonePlaying && toneOsc) {
+                toneOsc.frequency.exponentialRampToValueAtTime(freq, audioCtx.currentTime + 0.05);
+            }
+        }
+
+        sliderFreq.addEventListener('input', (e) => {
+            const freq = sliderToFreq(e.target.value);
+            setFrequency(freq, false); 
+        });
+
+        inputFreq.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                setFrequency(e.target.value, true);
+                inputFreq.blur();
+            }
+        });
+        inputFreq.addEventListener('blur', (e) => setFrequency(e.target.value, true));
+
+        btnTone.addEventListener('click', () => {
+            initAudio();
+            if (!isTonePlaying) {
+                toneOsc = audioCtx.createOscillator();
+                toneGain = audioCtx.createGain();
+                toneOsc.type = 'sine';
+                
+                const currentFreq = Number(inputFreq.value);
+                toneOsc.frequency.setValueAtTime(currentFreq, audioCtx.currentTime);
+                toneGain.gain.setValueAtTime(0.1, audioCtx.currentTime); 
+                
+                toneOsc.connect(toneGain);
+                toneGain.connect(audioCtx.destination);
+                toneOsc.start();
+                
+                isTonePlaying = true;
+                btnTone.textContent = "재생 중지";
+                btnTone.classList.replace('bg-indigo-500', 'bg-red-500');
+                btnTone.classList.replace('hover:bg-indigo-600', 'hover:bg-red-600');
+                btnTone.classList.replace('shadow-indigo-200', 'shadow-red-200');
+            } else {
+                if (toneOsc) {
+                    toneOsc.stop();
+                    toneOsc.disconnect();
+                    toneGain.disconnect();
+                }
+                isTonePlaying = false;
+                btnTone.textContent = "재생 시작";
+                btnTone.classList.replace('bg-red-500', 'bg-indigo-500');
+                btnTone.classList.replace('hover:bg-red-600', 'hover:bg-indigo-600');
+                btnTone.classList.replace('shadow-red-200', 'shadow-indigo-200');
+            }
+        });
+
+        // --- RTA 뷰 모드 UI 처리 (라이트 테마 맞춤) ---
+        rtaRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                rtaRadios.forEach(r => {
+                    const label = r.closest('label');
+                    const span = label.querySelector('span');
+                    if(r.checked) {
+                        label.classList.add('bg-white/80', 'shadow-sm');
+                        label.classList.remove('hover:bg-white/40', 'bg-transparent');
+                        span.classList.replace('text-gray-500', 'text-gray-900');
+                    } else {
+                        label.classList.remove('bg-white/80', 'shadow-sm');
+                        label.classList.add('hover:bg-white/40', 'bg-transparent');
+                        span.classList.replace('text-gray-900', 'text-gray-500');
+                    }
+                });
+            });
+        });
+
+        // --- 2. 마이크 및 분석기 ---
+        btnMic.addEventListener('click', async () => {
+            initAudio();
+            if (!isMicActive) {
+                try {
+                    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+                    micSource = audioCtx.createMediaStreamSource(micStream);
+                    analyser = audioCtx.createAnalyser();
+                    analyser.fftSize = fftSize;
+                    analyser.smoothingTimeConstant = 0.6;
+                    
+                    micSource.connect(analyser);
+                    
+                    const bufferLength = analyser.frequencyBinCount;
+                    dataArray = new Float32Array(bufferLength);
+                    peakHoldData = new Float32Array(bufferLength);
+                    peakHoldData.fill(-140);
+
+                    isMicActive = true;
+                    btnMic.textContent = "마이크 끄기";
+                    btnMic.classList.replace('bg-emerald-500', 'bg-red-500');
+                    btnMic.classList.replace('hover:bg-emerald-600', 'hover:bg-red-600');
+                    btnMic.classList.replace('shadow-emerald-200', 'shadow-red-200');
+                    micStatus.textContent = "작동 중 (원음 분석)";
+                    
+                    drawAnalysis();
+                } catch (err) {
+                    alert("마이크 접근 권한이 필요합니다.");
+                }
+            } else {
+                cancelAnimationFrame(animationId);
+                if (micStream) micStream.getTracks().forEach(track => track.stop());
+                if (micSource) micSource.disconnect();
+                if (analyser) analyser.disconnect();
+                
+                isMicActive = false;
+                btnMic.textContent = "마이크 켜기";
+                btnMic.classList.replace('bg-red-500', 'bg-emerald-500');
+                btnMic.classList.replace('hover:bg-red-600', 'hover:bg-emerald-600');
+                btnMic.classList.replace('shadow-red-200', 'shadow-emerald-200');
+                micStatus.textContent = "대기 중...";
+                levelMeter.style.width = '0%';
+                rtaCtx.clearRect(0, 0, rtaCanvas.width, rtaCanvas.height);
+            }
+        });
+
+        function drawAnalysis() {
+            if (!isMicActive) return;
+            animationId = requestAnimationFrame(drawAnalysis);
+
+            analyser.getFloatFrequencyData(dataArray);
+
+            let sum = 0;
+            for(let i = 0; i < dataArray.length; i++) {
+                if(dataArray[i] > -100) sum += Math.pow(10, dataArray[i]/10);
+            }
+            let rms = Math.sqrt(sum / dataArray.length);
+            let rmsDb = 10 * Math.log10(rms || 1e-10);
+            let meterLevel = Math.max(0, Math.min(100, (rmsDb + 60) * (100/60)));
+            levelMeter.style.width = meterLevel + '%';
+
+            if (isMeasuring) {
+                for(let i = 0; i < dataArray.length; i++) {
+                    if (dataArray[i] > peakHoldData[i]) peakHoldData[i] = dataArray[i];
+                }
+            }
+
+            rtaCanvas.width = rtaCanvas.clientWidth;
+            rtaCanvas.height = rtaCanvas.clientHeight;
+
+            const rtaMode = document.querySelector('input[name="rtaMode"]:checked').value;
+            if (rtaMode === 'graph') {
+                drawGraph(rtaCanvas, rtaCtx, dataArray, '#9333ea'); // 보라색 선
+            } else {
+                draw15BandBars(rtaCanvas, rtaCtx, dataArray);
+            }
+        }
+
+        // 15밴드 레벨미터 (라이트 모드/글래스모피즘 대응)
+        function draw15BandBars(canvas, ctx, data) {
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // 글래스 효과를 위해 배경을 지움 (투명하게)
+            ctx.clearRect(0, 0, width, height);
+
+            const bands = [25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000];
+            const labels = ['25', '40', '63', '100', '160', '250', '400', '630', '1k', '1.6k', '2.5k', '4k', '6.3k', '10k', '16k'];
+
+            const nyquist = audioCtx.sampleRate / 2;
+            const binCount = data.length;
+            
+            const padding = 20;
+            const availableWidth = width - (padding * 2);
+            const barWidth = Math.floor((availableWidth / bands.length) * 0.7);
+            const spacing = (availableWidth / bands.length) - barWidth;
+            const startX = padding + (spacing / 2);
+
+            const minDb = -90; 
+            const maxDb = 0;
+            const textSpace = 25;
+
+            for (let i = 0; i < bands.length; i++) {
+                let fCenter = bands[i];
+                let fLow = fCenter / Math.pow(2, 1/3);
+                let fHigh = fCenter * Math.pow(2, 1/3);
+
+                let binLow = Math.floor((fLow / nyquist) * binCount);
+                let binHigh = Math.ceil((fHigh / nyquist) * binCount);
+                
+                binLow = Math.max(0, Math.min(binLow, binCount - 1));
+                binHigh = Math.max(0, Math.min(binHigh, binCount - 1));
+                if (binLow === binHigh && binHigh < binCount - 1) binHigh++;
+
+                let maxVal = -Infinity;
+                for (let b = binLow; b <= binHigh; b++) {
+                    if (data[b] > maxVal) maxVal = data[b];
+                }
+
+                if (maxVal < minDb) maxVal = minDb;
+                if (maxVal > maxDb) maxVal = maxDb;
+
+                const x = startX + i * (barWidth + spacing);
+                const barTotalHeight = height - textSpace;
+                const activeHeight = ((maxVal - minDb) / (maxDb - minDb)) * barTotalHeight;
+                
+                const segmentHeight = 4;
+                const gap = 2;
+                const numSegments = Math.floor(barTotalHeight / (segmentHeight + gap));
+                
+                for (let s = 0; s < numSegments; s++) {
+                    let segY = height - textSpace - (s + 1) * (segmentHeight + gap);
+                    let isLit = (s * (segmentHeight + gap)) < activeHeight;
+
+                    if (isLit) {
+                        // 라이트 모드용 대비되는 색상
+                        if (s > numSegments * 0.85) ctx.fillStyle = '#ef4444'; // Red
+                        else if (s > numSegments * 0.65) ctx.fillStyle = '#f59e0b'; // Amber
+                        else ctx.fillStyle = '#3b82f6'; // Blue
+                    } else {
+                        // 꺼진 상태는 투명한 회색 처리 (글래스 배경과 어울리게)
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                    }
+                    ctx.fillRect(x, segY, barWidth, segmentHeight);
+                }
+
+                // 피크 라인 (가장 상단 점)
+                if (activeHeight > 0) {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                    let peakY = height - textSpace - activeHeight;
+                    ctx.fillRect(x, peakY, barWidth, 2);
+                }
+
+                // 주파수 텍스트 라벨
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                ctx.font = 'bold 10px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(labels[i], x + barWidth / 2, height - 8);
+            }
+        }
+
+        // 라인 그래프 그리기 (라이트 모드 대응)
+        function drawGraph(canvas, ctx, data, color) {
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            ctx.clearRect(0, 0, width, height); // 투명 배경
+
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = color;
+            ctx.beginPath();
+
+            const minFreq = 20, maxFreq = 20000;
+            const minDb = -100, maxDb = 0;
+            const nyquist = audioCtx.sampleRate / 2;
+            const binCount = data.length;
+
+            for (let i = 0; i < binCount; i++) {
+                const freq = i * nyquist / binCount;
+                if (freq < minFreq) continue;
+                if (freq > maxFreq) break;
+
+                const logMin = Math.log10(minFreq);
+                const logMax = Math.log10(maxFreq);
+                const x = ((Math.log10(freq) - logMin) / (logMax - logMin)) * width;
+
+                let db = data[i];
+                if (db < minDb) db = minDb;
+                if (db > maxDb) db = maxDb;
+                const y = height - ((db - minDb) / (maxDb - minDb)) * height;
+
+                if (i === 0 || x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            
+            // 그리드 선 그리기 (검정색 투명도)
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.lineWidth = 1;
+            [100, 1000, 10000].forEach(f => {
+                const x = ((Math.log10(f) - Math.log10(minFreq)) / (Math.log10(maxFreq) - Math.log10(minFreq))) * width;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                ctx.font = 'bold 11px sans-serif';
+                ctx.fillText(f + 'Hz', x + 4, height - 5);
+            });
+        }
+
+        // --- 3. 주파수 응답 측정 ---
+        btnMeasure.addEventListener('click', () => {
+            if (!isMicActive) return alert("마이크를 먼저 켜주세요.");
+            if (isMeasuring) return;
+
+            if (isTonePlaying) btnTone.click(); 
+
+            isMeasuring = true;
+            btnMeasure.disabled = true;
+            measureStatus.classList.remove('hidden');
+            measureProgressContainer.classList.remove('hidden');
+            measureProgressBar.style.width = '0%';
+            
+            peakHoldData.fill(-140); 
+
+            const duration = 5;
+            const sweepOsc = audioCtx.createOscillator();
+            const sweepGain = audioCtx.createGain();
+
+            sweepOsc.type = 'sine';
+            sweepGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+
+            sweepOsc.frequency.setValueAtTime(20, audioCtx.currentTime);
+            sweepOsc.frequency.exponentialRampToValueAtTime(20000, audioCtx.currentTime + duration);
+
+            sweepOsc.connect(sweepGain);
+            sweepGain.connect(audioCtx.destination);
+            sweepOsc.start();
+            
+            let startTime = audioCtx.currentTime;
+            function updateProgress() {
+                if (!isMeasuring) return;
+                let elapsed = audioCtx.currentTime - startTime;
+                let progress = Math.min(100, (elapsed / duration) * 100);
+                measureProgressBar.style.width = progress + '%';
+                if (elapsed < duration) requestAnimationFrame(updateProgress);
+            }
+            updateProgress();
+
+            sweepOsc.stop(audioCtx.currentTime + duration);
+            
+            setTimeout(() => {
+                sweepOsc.disconnect();
+                sweepGain.disconnect();
+                isMeasuring = false;
+                btnMeasure.disabled = false;
+                measureStatus.classList.add('hidden');
+                measureProgressContainer.classList.add('hidden');
+                drawResult();
+            }, (duration + 0.2) * 1000); 
+        });
+
+        // --- 4. 측정 결과 (그래프 그리기) ---
+        function drawResult() {
+            resultCanvas.width = resultCanvas.clientWidth;
+            resultCanvas.height = resultCanvas.clientHeight;
+            let displayData = new Float32Array(peakHoldData);
+
+            if (chkSmooth.checked) {
+                const windowSize = 25;
+                const smoothed = new Float32Array(displayData.length);
+                for (let i = 0; i < displayData.length; i++) {
+                    let sum = 0, count = 0;
+                    for (let j = -windowSize; j <= windowSize; j++) {
+                        if (i + j >= 0 && i + j < displayData.length) {
+                            sum += displayData[i + j];
+                            count++;
+                        }
+                    }
+                    smoothed[i] = sum / count;
+                }
+                displayData = smoothed;
+            }
+            drawGraph(resultCanvas, resultCtx, displayData, '#db2777'); // 진한 핑크
+        }
+
+        chkSmooth.addEventListener('change', () => {
+            if (peakHoldData[10] > -140) drawResult();
+        });
+
+        window.addEventListener('resize', () => {
+            if(peakHoldData.length > 0 && peakHoldData[10] > -140) drawResult();
+        });
+        window.dispatchEvent(new Event('resize'));
+
+    </script>
+<script>
+Swal.fire({title : '주의', icon : 'warning', text : '이 측정 도구의 신뢰구간은 알수 없으며, 20Hz~20000Hz는 비신뢰구간입니다. CPU 부하로 인해 브라우저에 렉이 발생하는 경우 주파수 응답이 틀어질 수 있습니다. 단순 참고용으로 사용하시길 바랍니다.'})
+</script>
+</body>
+</html>
+
