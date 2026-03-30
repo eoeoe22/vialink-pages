@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>전체 아이콘 선택기 및 검색</title>
+    
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Material Design Icons (MDI) 7.4.47 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
+    
+    <!-- Bootstrap Icons (BI) 1.13.1 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.css">
+
+    <style>
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        
+        .toast {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            opacity: 0;
+            transform: translateY(20px);
+            pointer-events: none;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* 로딩 스피너 애니메이션 */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen pb-12">
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-6">
+        <!-- 헤더 -->
+        <header class="text-center">
+            <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">전체 아이콘 선택기</h1>
+            <p class="mt-2 text-sm text-gray-500">MDI(약 7,400개)와 BI(약 2,000개) 전체 목록 제공. 키워드로 검색해보세요.</p>
+        </header>
+
+        <!-- 1. 최상단: 선택된 아이콘 목록 칸 -->
+        <section class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 sticky top-4 z-20">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <i class="mdi mdi-check-circle-outline text-green-500 text-xl"></i>
+                    선택된 아이콘
+                </h2>
+                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">클릭 시 제거됩니다</span>
+            </div>
+            
+            <div id="selected-icons-container" class="flex flex-wrap gap-2 min-h-[50px] p-2 bg-gray-50 rounded-xl border border-dashed border-gray-300 max-h-40 overflow-y-auto">
+                <div class="text-gray-400 text-sm flex items-center justify-center w-full h-full my-auto italic" id="empty-message">
+                    아래에서 아이콘을 선택해주세요.
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. 선택된 아이콘 JSON 출력 칸 -->
+        <section class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 gap-3">
+                <h2 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <i class="mdi mdi-code-json text-blue-500 text-xl"></i>
+                    JSON 출력 및 직접 입력
+                    <span class="text-[10px] sm:text-xs text-blue-500 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full ml-1 whitespace-nowrap">직접 수정 가능</span>
+                    <span id="save-status" class="text-[10px] sm:text-xs text-green-600 font-medium ml-2 transition-opacity duration-300 opacity-0 flex items-center gap-1 whitespace-nowrap"><i class="mdi mdi-cloud-check"></i>자동 저장됨</span>
+                </h2>
+                
+                <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                    <!-- JSON 포맷 선택 토글 -->
+                    <div class="bg-gray-100 p-1 rounded-lg flex items-center text-xs sm:text-sm">
+                        <button id="format-pretty" onclick="setJsonFormat('pretty')" class="px-3 py-1.5 rounded-md bg-white shadow-sm text-blue-600 font-bold transition-colors">
+                            <i class="mdi mdi-format-align-left mr-1"></i>예쁘게 보기
+                        </button>
+                        <button id="format-mini" onclick="setJsonFormat('mini')" class="px-3 py-1.5 rounded-md text-gray-500 hover:text-gray-700 font-medium transition-colors">
+                            <i class="mdi mdi-zip-box mr-1"></i>가독성 박살 (용량절감)
+                        </button>
+                    </div>
+
+                    <button onclick="copyJsonToClipboard()" class="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm active:scale-95 shrink-0">
+                        <i class="mdi mdi-content-copy"></i> 복사
+                    </button>
+                </div>
+            </div>
+            <!-- readonly 속성을 제거하여 직접 수정 가능하게 변경 -->
+            <textarea id="json-output" class="w-full h-32 p-4 bg-gray-900 text-green-400 font-mono text-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y shadow-inner cursor-text transition-colors" spellcheck="false" placeholder="이곳에 JSON 배열을 붙여넣어 아이콘을 불러오세요.">[]</textarea>
+        </section>
+
+        <!-- 3. 검색 바 및 아이콘 탭 영역 -->
+        <section class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden z-10 relative">
+            <!-- 탭 헤더 -->
+            <div class="flex border-b border-gray-200 bg-gray-50">
+                <button id="tab-mdi" onclick="switchTab('mdi')" class="flex-1 py-4 text-center font-semibold text-blue-600 border-b-2 border-blue-600 bg-white transition-colors">
+                    <i class="mdi mdi-material-design text-lg mr-1"></i> MDI (<span id="count-mdi">로딩중</span>)
+                </button>
+                <button id="tab-bi" onclick="switchTab('bi')" class="flex-1 py-4 text-center font-semibold text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:bg-gray-100 transition-colors">
+                    <i class="bi bi-bootstrap-fill text-lg mr-1"></i> Bootstrap Icons (<span id="count-bi">로딩중</span>)
+                </button>
+            </div>
+
+            <!-- 검색 바 -->
+            <div class="p-4 bg-white border-b border-gray-100">
+                <div class="relative max-w-2xl mx-auto">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i class="mdi mdi-magnify text-gray-400 text-xl"></i>
+                    </div>
+                    <input type="text" id="search-input" class="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl leading-5 bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all shadow-inner" placeholder="아이콘 이름으로 검색 (예: heart, user, arrow...)">
+                </div>
+            </div>
+
+            <!-- 아이콘 그리드 컨테이너 -->
+            <div class="p-6 bg-gray-50 min-h-[500px] relative">
+                
+                <!-- 로딩 오버레이 -->
+                <div id="loading-overlay" class="absolute inset-0 bg-gray-50 bg-opacity-90 flex flex-col items-center justify-center z-10">
+                    <div class="loader mb-4"></div>
+                    <p class="text-gray-500 font-medium">전체 아이콘 데이터를 불러오는 중입니다...</p>
+                </div>
+
+                <!-- 검색 결과 없음 안내 -->
+                <div id="no-results" class="hidden text-center py-20 text-gray-400">
+                    <i class="mdi mdi-emoticon-sad-outline text-5xl mb-3"></i>
+                    <p class="text-lg">검색 결과가 없습니다.</p>
+                </div>
+
+                <div id="icon-grid" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-3">
+                    <!-- JS로 렌더링됨 -->
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- 복사 완료 알림 토스트 -->
+    <div id="toast" class="toast fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2 z-50">
+        <i class="mdi mdi-check-circle text-green-400 text-xl"></i>
+        <span>JSON이 클립보드에 복사되었습니다!</span>
+    </div>
+
+    <!-- 스크립트는 모듈 형태로 변경하여 클라우드(Firebase) 기능을 사용합니다 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // === 설정 및 변수 ===
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        let db, auth, currentUser;
+        let mdiIcons = [];
+        let biIcons = [];
+        let selectedIcons = [];
+        let currentTab = 'mdi';
+        let searchTimeout = null;
+        let saveTimeout = null;
+        let jsonFormatMode = 'pretty'; // 'pretty' | 'mini'
+
+        // === DOM 참조 ===
+        const selectedContainer = document.getElementById('selected-icons-container');
+        const emptyMessage = document.getElementById('empty-message');
+        const jsonOutput = document.getElementById('json-output');
+        const iconGrid = document.getElementById('icon-grid');
+        const searchInput = document.getElementById('search-input');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const noResultsMessage = document.getElementById('no-results');
+        const saveStatus = document.getElementById('save-status');
+
+        // === 클라우드(Firestore) 초기화 및 로드 로직 ===
+        if (firebaseConfig) {
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            const initAuth = async () => {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (error) {
+                    console.error("인증 실패:", error);
+                }
+            };
+
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    currentUser = user;
+                    await loadDataFromCloud();
+                }
+            });
+
+            initAuth();
+        }
+
+        async function loadDataFromCloud() {
+            if (!currentUser || !db) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'iconData', 'savedState');
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (Array.isArray(data.icons)) {
+                        selectedIcons = data.icons;
+                        renderPills();
+                        updateJsonOutput();
+                        // 데이터 불러온 뒤, 검색어가 있다면 검색어 기준, 아니면 전체 기준으로 렌더링 갱신
+                        renderGrid(searchInput.value);
+                    }
+                }
+            } catch (error) {
+                console.error("데이터 로드 실패:", error);
+            }
+        }
+
+        function debouncedSaveData() {
+            if (saveTimeout) clearTimeout(saveTimeout);
+            // 1초 동안 추가 변경이 없으면 클라우드에 자동 저장 실행
+            saveTimeout = setTimeout(() => {
+                saveDataToCloud();
+            }, 1000);
+        }
+
+        async function saveDataToCloud() {
+            if (!currentUser || !db) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'iconData', 'savedState');
+                await setDoc(docRef, { icons: selectedIcons });
+                
+                // 저장 완료 UI 피드백
+                saveStatus.classList.remove('opacity-0');
+                setTimeout(() => {
+                    saveStatus.classList.add('opacity-0');
+                }, 2500);
+            } catch (error) {
+                console.error("데이터 저장 실패:", error);
+            }
+        }
+
+        // === JSON 수동 직접 입력 처리 (핵심 기능) ===
+        jsonOutput.addEventListener('input', (e) => {
+            try {
+                const parsed = JSON.parse(e.target.value);
+                if (Array.isArray(parsed)) {
+                    // 문자열 타입만 필터링하여 유효한 JSON 배열인지 확인
+                    const validIcons = parsed.filter(item => typeof item === 'string');
+                    selectedIcons = validIcons;
+                    
+                    renderPills();
+                    renderGrid(searchInput.value);
+                    debouncedSaveData();
+                    // 타이핑 중 텍스트가 덮어씌워져 커서가 튀는 것을 막기 위해 updateJsonOutput()은 호출하지 않습니다.
+                }
+            } catch (err) {
+                // 문법이 완성되지 않아 파싱 에러가 발생할 때는 무시하고 입력을 기다립니다.
+            }
+        });
+
+
+        // === UI 포맷 및 탭 컨트롤 함수 (전역 연결) ===
+        window.setJsonFormat = function(mode) {
+            jsonFormatMode = mode;
+            const btnPretty = document.getElementById('format-pretty');
+            const btnMini = document.getElementById('format-mini');
+
+            if (mode === 'pretty') {
+                btnPretty.className = "px-3 py-1.5 rounded-md bg-white shadow-sm text-blue-600 font-bold transition-colors";
+                btnMini.className = "px-3 py-1.5 rounded-md text-gray-500 hover:text-gray-700 font-medium transition-colors";
+            } else {
+                btnMini.className = "px-3 py-1.5 rounded-md bg-white shadow-sm text-blue-600 font-bold transition-colors";
+                btnPretty.className = "px-3 py-1.5 rounded-md text-gray-500 hover:text-gray-700 font-medium transition-colors";
+            }
+            updateJsonOutput();
+        }
+
+        window.switchTab = function(tab) {
+            currentTab = tab;
+            const tabMdiBtn = document.getElementById('tab-mdi');
+            const tabBiBtn = document.getElementById('tab-bi');
+            
+            if (tab === 'mdi') {
+                tabMdiBtn.className = "flex-1 py-4 text-center font-semibold text-blue-600 border-b-2 border-blue-600 bg-white transition-colors";
+                tabBiBtn.className = "flex-1 py-4 text-center font-semibold text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:bg-gray-100 transition-colors";
+            } else {
+                tabBiBtn.className = "flex-1 py-4 text-center font-semibold text-blue-600 border-b-2 border-blue-600 bg-white transition-colors";
+                tabMdiBtn.className = "flex-1 py-4 text-center font-semibold text-gray-500 border-b-2 border-transparent hover:text-gray-700 hover:bg-gray-100 transition-colors";
+            }
+            
+            renderGrid(searchInput.value);
+        }
+
+        window.copyJsonToClipboard = function() {
+            const textToCopy = jsonOutput.value;
+            const tempTextArea = document.createElement("textarea");
+            tempTextArea.value = textToCopy;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            
+            try {
+                document.execCommand('copy');
+                showToast();
+            } catch (err) {
+                alert("복사에 실패했습니다.");
+            } finally {
+                document.body.removeChild(tempTextArea);
+            }
+        }
+
+        // === 공통 렌더링 및 UI 업데이트 로직 ===
+        function updateJsonOutput() {
+            if (jsonFormatMode === 'pretty') {
+                jsonOutput.value = JSON.stringify(selectedIcons, null, 4);
+            } else {
+                jsonOutput.value = JSON.stringify(selectedIcons);
+            }
+        }
+
+        function renderPills() {
+            selectedContainer.innerHTML = '';
+            
+            if (selectedIcons.length === 0) {
+                selectedContainer.appendChild(emptyMessage);
+                emptyMessage.style.display = 'flex';
+            } else {
+                emptyMessage.style.display = 'none';
+                selectedIcons.forEach(code => {
+                    const pill = document.createElement('div');
+                    pill.className = "group flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg shadow-sm cursor-pointer hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors";
+                    pill.onclick = () => removeIcon(code);
+                    
+                    pill.innerHTML = `
+                        ${getIconElement(code, 'text-base')}
+                        <span class="text-xs font-medium font-mono">${code}</span>
+                        <i class="mdi mdi-close text-gray-400 group-hover:text-red-500 ml-1"></i>
+                    `;
+                    selectedContainer.appendChild(pill);
+                });
+            }
+        }
+
+        function updateTopUI() {
+            renderPills();
+            updateJsonOutput();
+            debouncedSaveData(); // 클릭 등으로 변경사항이 있을때 자동저장 예약
+        }
+
+        // === 아이콘 상호작용 ===
+        window.toggleIcon = function(code) {
+            const index = selectedIcons.indexOf(code);
+            const gridItem = document.getElementById(`icon-card-${code}`);
+            
+            if (index > -1) {
+                selectedIcons.splice(index, 1);
+                if (gridItem) {
+                    gridItem.className = "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all cursor-pointer select-none group border-transparent bg-white shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-gray-300 text-gray-600 hover:text-blue-600";
+                    const checkIcon = gridItem.querySelector('.selected-check');
+                    if (checkIcon) checkIcon.remove();
+                }
+            } else {
+                selectedIcons.push(code);
+                if (gridItem) {
+                    gridItem.className = "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all cursor-pointer select-none group border-blue-500 bg-blue-50 text-blue-700 shadow-md relative";
+                    gridItem.insertAdjacentHTML('beforeend', `<div class="selected-check absolute top-1 right-1 text-blue-500"><i class="mdi mdi-check-circle text-sm"></i></div>`);
+                }
+            }
+            updateTopUI();
+        }
+
+        function removeIcon(code) {
+            const index = selectedIcons.indexOf(code);
+            if (index > -1) {
+                selectedIcons.splice(index, 1);
+                updateTopUI();
+                
+                const gridItem = document.getElementById(`icon-card-${code}`);
+                if (gridItem) {
+                    gridItem.className = "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all cursor-pointer select-none group border-transparent bg-white shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-gray-300 text-gray-600 hover:text-blue-600";
+                    const checkIcon = gridItem.querySelector('.selected-check');
+                    if (checkIcon) checkIcon.remove();
+                }
+            }
+        }
+
+        // === 초기 데이터 Fetch 및 그리드 렌더링 ===
+        async function fetchAllIcons() {
+            try {
+                // 1. MDI 메타데이터
+                const mdiRes = await fetch('https://cdn.jsdelivr.net/npm/@mdi/svg@7.4.47/meta.json');
+                const mdiData = await mdiRes.json();
+                mdiIcons = mdiData.map(item => 'mdi-' + item.name);
+                document.getElementById('count-mdi').textContent = mdiIcons.length.toLocaleString() + '개';
+
+                // 2. BI 메타데이터
+                const biRes = await fetch('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.json');
+                const biData = await biRes.json();
+                biIcons = Object.keys(biData).map(key => 'bi-' + key);
+                document.getElementById('count-bi').textContent = biIcons.length.toLocaleString() + '개';
+
+                loadingOverlay.classList.add('hidden');
+                renderGrid();
+
+            } catch (error) {
+                console.error("데이터 로드 실패:", error);
+                loadingOverlay.innerHTML = `
+                    <i class="mdi mdi-alert-circle text-red-500 text-4xl mb-3"></i>
+                    <p class="text-red-600 font-medium">데이터 로드 실패. 인터넷 연결을 확인해주세요.</p>
+                `;
+            }
+        }
+
+        function getIconElement(code, sizeClass = 'text-3xl') {
+            if (code.startsWith('mdi-')) return `<i class="mdi ${code} ${sizeClass}"></i>`;
+            if (code.startsWith('bi-')) return `<i class="bi ${code} ${sizeClass}"></i>`;
+            return '';
+        }
+
+        function renderGrid(searchTerm = '') {
+            const icons = currentTab === 'mdi' ? mdiIcons : biIcons;
+            const keyword = searchTerm.trim().toLowerCase();
+            
+            const filteredIcons = keyword === '' 
+                ? icons 
+                : icons.filter(code => code.toLowerCase().includes(keyword));
+
+            if (filteredIcons.length === 0) {
+                iconGrid.innerHTML = '';
+                noResultsMessage.classList.remove('hidden');
+                return;
+            }
+            
+            noResultsMessage.classList.add('hidden');
+
+            const htmlString = filteredIcons.map(code => {
+                const isSelected = selectedIcons.includes(code);
+                
+                const baseClasses = "flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all cursor-pointer select-none group ";
+                const colorClasses = isSelected 
+                    ? "border-blue-500 bg-blue-50 text-blue-700 shadow-md relative" 
+                    : "border-transparent bg-white shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-gray-300 text-gray-600 hover:text-blue-600";
+                
+                const checkMark = isSelected ? `<div class="selected-check absolute top-1 right-1 text-blue-500"><i class="mdi mdi-check-circle text-sm"></i></div>` : '';
+
+                return `
+                    <div id="icon-card-${code}" class="${baseClasses} ${colorClasses}" onclick="toggleIcon('${code}')">
+                        <div class="mb-2 transition-transform group-hover:scale-110">
+                            ${getIconElement(code, 'text-3xl')}
+                        </div>
+                        <span class="text-[10px] font-mono text-center break-all opacity-80 leading-tight">${code.replace(currentTab+'-', '')}</span>
+                        ${checkMark}
+                    </div>
+                `;
+            }).join('');
+
+            iconGrid.innerHTML = htmlString;
+        }
+
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                renderGrid(e.target.value);
+            }, 300);
+        });
+
+        function showToast() {
+            const toastEl = document.getElementById('toast');
+            toastEl.classList.add('show');
+            setTimeout(() => {
+                toastEl.classList.remove('show');
+            }, 2500);
+        }
+
+        // 앱 초기화 실행
+        fetchAllIcons();
+    </script>
+</body>
+</html>
+
