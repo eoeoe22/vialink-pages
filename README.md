@@ -1,6 +1,6 @@
 [VIALinks](https://wiki.vialinks.xyz/w/VIALinks) 페이지 호스팅 기능으로 제공하는 싱글 페이지 유틸리티 모음
 
-[icons.html](https://wiki.vialinks.xyz/w/VIALinks%2Ficons))
+[icons.html](https://wiki.vialinks.xyz/w/VIALinks%2Ficons)
 부트스트랩 아이콘, mdi의 전체 아이콘 라이브러리를 클릭으로 선택하고, 선택 목록을 json으로 출력
 
 [rew.html](https://wiki.vialinks.xyz/w/VIALinks%2Frew)
