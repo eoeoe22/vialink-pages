@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 스피커 배치 시뮬레이터</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e1e;
+            color: #eee;
+        }
+        #sidebar {
+            width: 350px;
+            background-color: #2a2a2a;
+            overflow-y: auto;
+            border-right: 1px solid #444;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+        }
+        details {
+            background-color: #333;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border: 1px solid #444;
+        }
+        summary {
+            padding: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            user-select: none;
+            background-color: #3a3a3a;
+            border-radius: 5px;
+        }
+        summary:hover { background-color: #4a4a4a; }
+        .content { padding: 15px; }
+        .input-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .input-group label { font-size: 13px; }
+        .input-group input[type="number"] {
+            width: 70px;
+            background: #222;
+            color: white;
+            border: 1px solid #555;
+            padding: 4px;
+            border-radius: 3px;
+        }
+        .slider-group { margin-bottom: 12px; }
+        .slider-group label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 5px;
+        }
+        input[type="range"] { width: 100%; }
+        .color-palette {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        .color-swatch {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        .color-swatch:hover { transform: scale(1.1); }
+        .color-swatch.active { border-color: white; }
+        .btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .btn:hover { background-color: #0056b3; }
+        .btn-danger { background-color: #dc3545; margin-top: 10px;}
+        .btn-danger:hover { background-color: #a71d2a; }
+        .toggle-group { margin-bottom: 15px; border-bottom: 1px solid #555; padding-bottom: 10px; }
+        hr { border-color: #555; margin: 15px 0; }
+        span.unit { font-size: 11px; color: #aaa; }
+    </style>
+    <!-- Three.js jsdelivr Import Map -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2 style="font-size: 18px; margin-top: 0;">스피커 배치 시뮬레이터</h2>
+    
+    <!-- 방 설정 -->
+    <details open>
+        <summary>방 설정 (Room)</summary>
+        <div class="content" id="room-ui">
+            <div class="toggle-group">
+                <label><input type="checkbox" id="room-visible" checked> 렌더링 켜기</label>
+            </div>
+            <div class="input-group"><label>너비 (X) <span class="unit">cm</span></label><input type="number" id="room-w" value="400"></div>
+            <div class="input-group"><label>깊이 (Z) <span class="unit">cm</span></label><input type="number" id="room-d" value="500"></div>
+            <div class="input-group"><label>높이 (Y) <span class="unit">cm</span></label><input type="number" id="room-h" value="250"></div>
+            <div class="color-palette" id="room-colors"></div>
+        </div>
+    </details>
+
+    <!-- 책상 설정 -->
+    <details open>
+        <summary>책상 설정 (Desk)</summary>
+        <div class="content" id="desk-ui">
+            <div class="toggle-group">
+                <label><input type="checkbox" id="desk-visible" checked> 렌더링 켜기</label>
+            </div>
+            <div class="input-group"><label>너비 (X) <span class="unit">cm</span></label><input type="number" id="desk-w" value="160"></div>
+            <div class="input-group"><label>깊이 (Z) <span class="unit">cm</span></label><input type="number" id="desk-d" value="70"></div>
+            <div class="input-group"><label>높이 (Y) <span class="unit">cm</span></label><input type="number" id="desk-h" value="75"></div>
+            <div class="color-palette" id="desk-colors"></div>
+        </div>
+    </details>
+
+    <!-- 스피커 세트 컨테이너 -->
+    <div id="speakers-container"></div>
+
+    <button class="btn" id="btn-add-speaker">+ 새로운 스피커 세트 추가</button>
+</div>
+
+<div id="canvas-container"></div>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // --- 기본 상태 (State) ---
+    const state = {
+        room: { w: 400, h: 250, d: 500, visible: true, color: 0x888888 },
+        desk: { w: 160, h: 75, d: 70, visible: true, color: 0x8b5a2b },
+        speakerSets: []
+    };
+
+    const colors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0x44ffff, 0xff44ff, 0xeeeeee, 0x888888, 0x8b5a2b];
+    let speakerIdCounter = 0;
+
+    // --- Three.js 초기화 ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111111);
+
+    const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 100);
+    camera.position.set(0, 1.5, 3); // 기본 카메라 위치
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0.8, 0);
+    controls.update();
+
+    // 조명
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(5, 10, 5);
+    scene.add(dirLight);
+
+    // 바닥 그리드
+    const gridHelper = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
+    scene.add(gridHelper);
+
+    // 객체 저장소
+    const meshes = {
+        room: null,
+        desk: null,
+        speakerGroups: {} 
+    };
+
+    // --- 렌더링 함수들 ---
+    function createMaterial(color) {
+        return new THREE.MeshStandardMaterial({
+            color: color,
+            transparent: true,
+            opacity: 0.5,
+            depthWrite: false, 
+            side: THREE.DoubleSide
+        });
+    }
+
+    function updateRoom() {
+        if (meshes.room) scene.remove(meshes.room);
+        if (!state.room.visible) return;
+
+        const w = state.room.w / 100;
+        const h = state.room.h / 100;
+        const d = state.room.d / 100;
+
+        const geo = new THREE.BoxGeometry(w, h, d);
+        const mat = new THREE.MeshStandardMaterial({
+            color: state.room.color,
+            transparent: true,
+            opacity: 0.1,
+            side: THREE.BackSide
+        });
+        
+        meshes.room = new THREE.Mesh(geo, mat);
+        meshes.room.position.set(0, h/2, 0);
+
+        const edges = new THREE.EdgesGeometry(geo);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: state.room.color }));
+        meshes.room.add(line);
+
+        scene.add(meshes.room);
+    }
+
+    function updateDesk() {
+        if (meshes.desk) scene.remove(meshes.desk);
+        if (!state.desk.visible) return;
+
+        const w = state.desk.w / 100;
+        const h = state.desk.h / 100;
+        const d = state.desk.d / 100;
+
+        const geo = new THREE.BoxGeometry(w, h, d);
+        const mat = createMaterial(state.desk.color);
+        meshes.desk = new THREE.Mesh(geo, mat);
+        meshes.desk.position.set(0, h/2, 0);
+
+        const edges = new THREE.EdgesGeometry(geo);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: state.desk.color }));
+        meshes.desk.add(line);
+
+        scene.add(meshes.desk);
+        updateSpeakers();
+    }
+
+    function updateSpeakers() {
+        // 기존 스피커 모두 제거
+        for (const id in meshes.speakerGroups) {
+            scene.remove(meshes.speakerGroups[id]);
+        }
+        meshes.speakerGroups = {};
+
+        state.speakerSets.forEach(spk => {
+            if (!spk.visible) return;
+
+            const group = new THREE.Group();
+            meshes.speakerGroups[spk.id] = group;
+
+            const w = spk.w / 100;
+            const h = spk.h / 100;
+            const d = spk.d / 100;
+            const spread = spk.spread / 100;
+            const zPos = spk.zPos / 100;
+            const toeInRad = THREE.MathUtils.degToRad(spk.toeIn);
+            const standH = spk.standH / 100;
+
+            let baseHeight = 0;
+            if (spk.placement === 'desk' && state.desk.visible) {
+                baseHeight = state.desk.h / 100;
+            }
+
+            const spkGeo = new THREE.BoxGeometry(w, h, d);
+            const spkMat = createMaterial(spk.color);
+            const standGeo = standH > 0 ? new THREE.BoxGeometry(w, standH, d) : null;
+            const standMat = createMaterial(0x555555);
+
+            // 스피커 앞면(유닛) 식별을 위한 원형 메쉬 (우퍼 및 트위터)
+            const wooferR = Math.min(w, h) * 0.25;
+            const wooferGeo = new THREE.CylinderGeometry(wooferR, wooferR, 0.005, 32);
+            wooferGeo.rotateX(Math.PI / 2); // Z축을 바라보게 세움
+            
+            const tweeterR = Math.min(w, h) * 0.12;
+            const tweeterGeo = new THREE.CylinderGeometry(tweeterR, tweeterR, 0.005, 32);
+            tweeterGeo.rotateX(Math.PI / 2);
+            
+            const unitMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
+
+            // --- 좌측 스피커 생성 ---
+            const leftGroup = new THREE.Group();
+            const leftSpk = new THREE.Mesh(spkGeo, spkMat);
+            leftSpk.position.y = standH + h / 2;
+            leftGroup.add(leftSpk);
+            if (standGeo) {
+                const leftStand = new THREE.Mesh(standGeo, standMat);
+                leftStand.position.y = standH / 2;
+                leftGroup.add(leftStand);
+            }
+            
+            // 전면에 유닛 부착
+            const lWoofer = new THREE.Mesh(wooferGeo, unitMat);
+            lWoofer.position.set(0, standH + h * 0.35, d / 2 + 0.005);
+            const lTweeter = new THREE.Mesh(tweeterGeo, unitMat);
+            lTweeter.position.set(0, standH + h * 0.75, d / 2 + 0.005);
+            leftGroup.add(lWoofer, lTweeter);
+
+            leftGroup.position.set(-spread / 2, baseHeight, zPos);
+            // 좌측 스피커가 중앙을 향하려면 Y축 기준 반시계(양수) 방향 회전
+            leftGroup.rotation.y = toeInRad; 
+            leftGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(spkGeo), new THREE.LineBasicMaterial({color: spk.color})).translateY(standH + h/2));
+
+            // --- 우측 스피커 생성 ---
+            const rightGroup = new THREE.Group();
+            const rightSpk = new THREE.Mesh(spkGeo, spkMat);
+            rightSpk.position.y = standH + h / 2;
+            rightGroup.add(rightSpk);
+            if (standGeo) {
+                const rightStand = new THREE.Mesh(standGeo, standMat);
+                rightStand.position.y = standH / 2;
+                rightGroup.add(rightStand);
+            }
+
+            // 전면에 유닛 부착
+            const rWoofer = new THREE.Mesh(wooferGeo, unitMat);
+            rWoofer.position.set(0, standH + h * 0.35, d / 2 + 0.005);
+            const rTweeter = new THREE.Mesh(tweeterGeo, unitMat);
+            rTweeter.position.set(0, standH + h * 0.75, d / 2 + 0.005);
+            rightGroup.add(rWoofer, rTweeter);
+
+            rightGroup.position.set(spread / 2, baseHeight, zPos);
+            // 우측 스피커가 중앙을 향하려면 Y축 기준 시계(음수) 방향 회전
+            rightGroup.rotation.y = -toeInRad; 
+            rightGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(spkGeo), new THREE.LineBasicMaterial({color: spk.color})).translateY(standH + h/2));
+
+            group.add(leftGroup);
+            group.add(rightGroup);
+            scene.add(group);
+        });
+    }
+
+    // --- UI 생성 및 이벤트 바인딩 ---
+    function createColorPalette(containerId, activeColor, onChange) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
+        colors.forEach(hex => {
+            const div = document.createElement('div');
+            div.className = 'color-swatch' + (hex === activeColor ? ' active' : '');
+            div.style.backgroundColor = '#' + hex.toString(16).padStart(6, '0');
+            div.onclick = () => {
+                onChange(hex);
+                createColorPalette(containerId, hex, onChange); 
+            };
+            container.appendChild(div);
+        });
+    }
+
+    // 방 UI 바인딩
+    document.getElementById('room-visible').addEventListener('change', e => { state.room.visible = e.target.checked; updateRoom(); });
+    ['w', 'd', 'h'].forEach(dim => {
+        document.getElementById(`room-${dim}`).addEventListener('input', e => { state.room[dim] = Number(e.target.value); updateRoom(); });
+    });
+    createColorPalette('room-colors', state.room.color, c => { state.room.color = c; updateRoom(); });
+
+    // 책상 UI 바인딩
+    document.getElementById('desk-visible').addEventListener('change', e => { 
+        state.desk.visible = e.target.checked; 
+        updateDesk(); 
+        renderSpeakerUI(); 
+    });
+    ['w', 'd', 'h'].forEach(dim => {
+        document.getElementById(`desk-${dim}`).addEventListener('input', e => { state.desk[dim] = Number(e.target.value); updateDesk(); });
+    });
+    createColorPalette('desk-colors', state.desk.color, c => { state.desk.color = c; updateDesk(); });
+
+    // 스피커 추가
+    function addSpeakerSet() {
+        speakerIdCounter++;
+        const defaultColor = colors[(speakerIdCounter) % colors.length];
+        const newSet = {
+            id: speakerIdCounter,
+            visible: true,
+            w: 20, h: 35, d: 25,
+            placement: 'desk',
+            standH: 0,
+            spread: 100,
+            zPos: 0,
+            toeIn: 0,
+            color: defaultColor
+        };
+        state.speakerSets.push(newSet);
+        renderSpeakerUI();
+        updateSpeakers();
+    }
+
+    document.getElementById('btn-add-speaker').addEventListener('click', addSpeakerSet);
+
+    // 스피커 UI 렌더링
+    function renderSpeakerUI() {
+        const container = document.getElementById('speakers-container');
+        container.innerHTML = '';
+
+        state.speakerSets.forEach((spk, index) => {
+            const details = document.createElement('details');
+            details.open = true;
+            
+            const deskDisabled = !state.desk.visible ? 'disabled' : '';
+            const deskWarning = !state.desk.visible ? '<span style="color:#ff6666; font-size:11px;">(책상 렌더링이 꺼져있어 바닥 기준으로 계산됩니다)</span>' : '';
+
+            details.innerHTML = `
+                <summary>스피커 세트 ${index + 1}</summary>
+                <div class="content">
+                    <div class="toggle-group">
+                        <label><input type="checkbox" id="spk-vis-${spk.id}" ${spk.visible ? 'checked' : ''}> 렌더링 켜기</label>
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <label><input type="radio" name="place-${spk.id}" value="desk" ${spk.placement === 'desk' ? 'checked' : ''} ${deskDisabled}> 책상에 놓기</label>
+                        <label><input type="radio" name="place-${spk.id}" value="floor" ${spk.placement === 'floor' ? 'checked' : ''}> 바닥에 놓기 (스탠드)</label>
+                        <br>${deskWarning}
+                    </div>
+
+                    <div class="input-group"><label>너비 (X) <span class="unit">cm</span></label><input type="number" id="spk-w-${spk.id}" value="${spk.w}"></div>
+                    <div class="input-group"><label>깊이 (Z) <span class="unit">cm</span></label><input type="number" id="spk-d-${spk.id}" value="${spk.d}"></div>
+                    <div class="input-group"><label>높이 (Y) <span class="unit">cm</span></label><input type="number" id="spk-h-${spk.id}" value="${spk.h}"></div>
+                    <div class="input-group"><label>스탠드 높이 <span class="unit">cm</span></label><input type="number" id="spk-stand-${spk.id}" value="${spk.standH}"></div>
+
+                    <hr>
+
+                    <div class="slider-group">
+                        <label>좌우 간격 (Spread): <span id="val-spread-${spk.id}">${spk.spread} cm</span></label>
+                        <input type="range" id="spk-spread-${spk.id}" min="20" max="300" value="${spk.spread}">
+                    </div>
+                    <div class="slider-group">
+                        <label>앞뒤 위치 (Depth): <span id="val-zPos-${spk.id}">${spk.zPos} cm</span></label>
+                        <input type="range" id="spk-zPos-${spk.id}" min="-200" max="200" value="${spk.zPos}">
+                    </div>
+                    <div class="slider-group">
+                        <label>토인각 (Toe-in): <span id="val-toeIn-${spk.id}">${spk.toeIn}°</span></label>
+                        <input type="range" id="spk-toeIn-${spk.id}" min="0" max="90" value="${spk.toeIn}">
+                    </div>
+
+                    <div class="color-palette" id="spk-colors-${spk.id}"></div>
+                    
+                    <button class="btn btn-danger" id="spk-remove-${spk.id}">이 스피커 세트 삭제</button>
+                </div>
+            `;
+            container.appendChild(details);
+
+            // 이벤트 바인딩
+            document.getElementById(`spk-vis-${spk.id}`).addEventListener('change', e => { spk.visible = e.target.checked; updateSpeakers(); });
+            
+            const radios = document.getElementsByName(`place-${spk.id}`);
+            radios.forEach(r => r.addEventListener('change', e => { spk.placement = e.target.value; updateSpeakers(); }));
+
+            ['w', 'd', 'h'].forEach(dim => {
+                document.getElementById(`spk-${dim}-${spk.id}`).addEventListener('input', e => { spk[dim] = Number(e.target.value); updateSpeakers(); });
+            });
+            document.getElementById(`spk-stand-${spk.id}`).addEventListener('input', e => { spk.standH = Number(e.target.value); updateSpeakers(); });
+
+            ['spread', 'zPos', 'toeIn'].forEach(param => {
+                const slider = document.getElementById(`spk-${param}-${spk.id}`);
+                const label = document.getElementById(`val-${param}-${spk.id}`);
+                slider.addEventListener('input', e => { 
+                    spk[param] = Number(e.target.value); 
+                    label.innerText = `${e.target.value} ${param === 'toeIn' ? '°' : 'cm'}`;
+                    updateSpeakers(); 
+                });
+            });
+
+            createColorPalette(`spk-colors-${spk.id}`, spk.color, c => { spk.color = c; updateSpeakers(); });
+
+            document.getElementById(`spk-remove-${spk.id}`).addEventListener('click', () => {
+                state.speakerSets = state.speakerSets.filter(s => s.id !== spk.id);
+                renderSpeakerUI();
+                updateSpeakers();
+            });
+        });
+    }
+
+    // --- 리사이즈 처리 ---
+    window.addEventListener('resize', () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+    // --- 애니메이션 루프 ---
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    // 초기화 실행
+    updateRoom();
+    updateDesk();
+    addSpeakerSet(); // 기본 스피커 1개 추가
+    animate();
+
+</script>
+</body>
+</html>
