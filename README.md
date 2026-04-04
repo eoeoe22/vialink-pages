@@ -9,8 +9,11 @@ Web Audio API 기반 간이 주파수 응답 분석기
 [r2r.html](https://wiki.vialinks.xyz/w/VIALinks%2FR2R)
 2진법 R2R 래더 DAC, 양자화 오류 시각화
 
-3d-speakers.html
+[3d-speakers.html](https://vialinks.xyz/3d-speakers)
 가상 3d 공간 스피커 배치 시뮬레이션
 
-captcha.html
+[captcha.html](https://vialinks.xyz/captcha)
 미사카 미코토 오리지널 구별하기 등의 퀴즈를 reCapthca 모양의 UI로 구현 (실제 보안용 캡챠가 아님)
+
+[cloudwiki-components-json-builder.html](https://vialinks.xyz/components-json-builder)
+Cloudwiki 사이드바 / 푸터 커스터마이징 json 제작기
