@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitSync Config GUI</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --bg: #0f172a;
+            --panel: rgba(255, 255, 255, 0.05);
+            --border: rgba(255, 255, 255, 0.1);
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --accent: #6b21a8;
+            --accent-hover: #9333ea;
+            --error: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            background: linear-gradient(to right, #e879f9, #38bdf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+
+        p.subtitle {
+            color: var(--muted);
+            text-align: center;
+            margin-bottom: 32px;
+            font-size: 14px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+            position: relative;
+        }
+
+        .repo-item {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 24px;
+            margin-bottom: 24px;
+        }
+
+        .repo-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .input-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--muted);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        input {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: white;
+            font-size: 14px;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: #c084fc;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 24px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .btn-add {
+            background: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-add:hover {
+            background: rgba(16, 185, 129, 0.2);
+        }
+
+        .btn-delete {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            padding: 6px 12px;
+        }
+
+        .btn-delete:hover {
+            background: rgba(239, 68, 68, 0.2);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+            color: white;
+            width: 100%;
+            margin-top: 16px;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid var(--border);
+            width: 100%;
+            margin-top: 8px;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .output-area {
+            margin-top: 32px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 200px;
+            background: #000;
+            color: #10b981;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            font-family: monospace;
+            font-size: 12px;
+            resize: vertical;
+            margin-top: 8px;
+        }
+
+        .copy-toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #10b981;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            display: none;
+            animation: fadeInOut 2s ease-in-out;
+        }
+
+        @keyframes fadeInOut {
+            0% {
+                opacity: 0;
+            }
+
+            20% {
+                opacity: 1;
+            }
+
+            80% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+            }
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>GitSync Config GUI</h1>
+        <p class="subtitle">레포지토리 설정을 시각적으로 편집하고 JSON을 생성합니다.</p>
+
+        <div class="card" id="repoContainer">
+            <!-- Repos will be added here -->
+        </div>
+
+        <div class="btn-row">
+            <button class="btn-add" onclick="addRepo()">+ 저장소 추가</button>
+        </div>
+
+        <button class="btn-primary" onclick="generateJSON()">JSON 생성 및 복사</button>
+
+        <div class="output-area">
+            <label>REPO_CONFIGS JSON (편집 및 불러오기 가능)</label>
+            <textarea id="jsonOutput" placeholder="기존 JSON을 여기에 붙여넣고 아래 'JSON 불러오기' 버튼을 누르거나, 위에서 설정 후 'JSON 생성'을 누르세요..."></textarea>
+            <button class="btn-secondary" onclick="loadJSON()">JSON 불러오기 (UI에 반영)</button>
+            <p style="font-size: 11px; color: var(--muted); margin-top: 8px;">
+                * 이 텍스트를 복사하여 wrangler.toml의 [vars] 섹션에 있는 REPO_CONFIGS 값으로 붙여넣으세요.
+            </p>
+        </div>
+    </div>
+
+    <div id="copyToast" class="copy-toast">클립보드에 복사되었습니다!</div>
+
+    <script>
+        let repos = [];
+
+        function renderRepos() {
+            const container = document.getElementById('repoContainer');
+            container.innerHTML = '';
+
+            repos.forEach((repo, index) => {
+                const div = document.createElement('div');
+                div.className = 'repo-item';
+                div.innerHTML = `
+          <div class="header-row">
+            <h3 style="font-size: 16px; color: #c084fc;">저장소 #${index + 1}</h3>
+            <button class="btn-delete" onclick="deleteRepo(${index})">삭제</button>
+          </div>
+          <div class="grid">
+            <div class="input-group">
+              <label>표시 이름</label>
+              <input type="text" value="${repo.name}" onchange="updateRepo(${index}, 'name', this.value)" placeholder="예: My Project">
+            </div>
+            <div class="input-group">
+              <label>비공개 저장소 명</label>
+              <input type="text" value="${repo.privateRepo}" onchange="updateRepo(${index}, 'privateRepo', this.value)" placeholder="예: my-repo-private">
+            </div>
+          </div>
+          <div class="grid">
+            <div class="input-group">
+              <label>공개 저장소 명</label>
+              <input type="text" value="${repo.publicRepo}" onchange="updateRepo(${index}, 'publicRepo', this.value)" placeholder="예: my-repo-public">
+            </div>
+            <div class="input-group">
+              <label>동기화 폴더 (쉼표 구분)</label>
+              <input type="text" value="${repo.syncFolders}" onchange="updateRepo(${index}, 'syncFolders', this.value)" placeholder="예: src,public">
+            </div>
+          </div>
+          <div class="grid">
+            <div class="input-group">
+              <label>동기화 파일 (쉼표 구분)</label>
+              <input type="text" value="${repo.syncFiles}" onchange="updateRepo(${index}, 'syncFiles', this.value)" placeholder="예: package.json,README.md">
+            </div>
+            <div class="input-group">
+              <label>제외 폴더 (쉼표 구분)</label>
+              <input type="text" value="${repo.excludeFolders}" onchange="updateRepo(${index}, 'excludeFolders', this.value)" placeholder="예: node_modules,dist">
+            </div>
+          </div>
+        `;
+                container.appendChild(div);
+            });
+        }
+
+        function addRepo() {
+            repos.push({
+                name: "",
+                privateRepo: "",
+                publicRepo: "",
+                syncFolders: "",
+                syncFiles: "",
+                excludeFolders: ""
+            });
+            renderRepos();
+        }
+
+        function deleteRepo(index) {
+            repos.splice(index, 1);
+            renderRepos();
+        }
+
+        function loadJSON() {
+            const jsonText = document.getElementById('jsonOutput').value;
+            try {
+                const parsed = JSON.parse(jsonText);
+                if (Array.isArray(parsed)) {
+                    repos = parsed;
+                    renderRepos();
+                    alert("성공적으로 불러왔습니다!");
+                } else {
+                    alert("JSON 형식이 올바르지 않습니다 (배열 형태여야 합니다).");
+                }
+            } catch (e) {
+                alert("JSON 파싱 에러: " + e.message);
+            }
+        }
+
+        function updateRepo(index, field, value) {
+            repos[index][field] = value;
+        }
+
+        function generateJSON() {
+            const output = document.getElementById('jsonOutput');
+            const cleanRepos = repos.map(r => {
+                const obj = { ...r };
+                // Remove empty fields if needed or just keep them
+                return obj;
+            });
+            const jsonStr = JSON.stringify(cleanRepos, null, 2);
+            output.value = jsonStr;
+
+            navigator.clipboard.writeText(jsonStr).then(() => {
+                const toast = document.getElementById('copyToast');
+                toast.style.display = 'block';
+                setTimeout(() => { toast.style.display = 'none'; }, 2000);
+            });
+        }
+
+        renderRepos();
+    </script>
+</body>
+
+</html>
