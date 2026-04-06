@@ -358,8 +358,8 @@
     // JSON 출력 업데이트
     function updateJsonOutput(target) {
         const textarea = document.getElementById(`${target}JsonOut`);
-        // 배열이 비어있으면 보기 좋게 [] 만 남기거나 포맷팅 적용
-        textarea.value = JSON.stringify(configData[target], null, 2);
+        // JSON 결과물을 항상 minify 하여 출력
+        textarea.value = JSON.stringify(configData[target]);
     }
 
     // 직접 입력한 JSON 적용하기
