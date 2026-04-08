@@ -16,4 +16,7 @@ Web Audio API 기반 간이 주파수 응답 분석기
 미사카 미코토 오리지널 구별하기 등의 퀴즈를 reCapthca 모양의 UI로 구현 (실제 보안용 캡챠가 아님)
 
 [cloudwiki-components-json-builder.html](https://vialinks.xyz/components-json-builder)
-Cloudwiki 사이드바 / 푸터 커스터마이징 json 제작기
+[Cloudwiki](https://wiki.vialinks.xyz) 사이드바 / 푸터 커스터마이징 json 제작기
+
+[gitsync-json](https://vialinks.xyz/gitsync-json)
+[Gitsync](https://github.com/eoeoe22/gitsync-public) 레포지토리 설정 json 제작기
