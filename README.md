@@ -28,6 +28,5 @@ Web Audio API 기반 간이 주파수 응답 분석기
 사이드바 / 푸터 커스터마이징 json 제작기
 
 [gitsync-json.html](https://vialinks.xyz/gitsync-json)
-[Gitsync](https://github.com/eoeoe22/gitsync-public)
 
-레포지토리 설정 json 제작기
+[Gitsync](https://github.com/eoeoe22/gitsync-public)레포지토리 설정 json 제작기
