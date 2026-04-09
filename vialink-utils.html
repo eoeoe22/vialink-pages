@@ -313,6 +313,23 @@
                         <button class="action-btn" onclick="copyText('aes-output')"><i class="bi bi-clipboard"></i> 복사</button>
                     </div>
                 </div>
+
+                <!-- 5. JSON 포매터 -->
+                <div class="tool-card" style="grid-column: span 2;">
+                    <div class="tool-title">
+                        <i class="bi bi-braces" style="color: #4B70E2;"></i> JSON 포매터
+                        <span id="json-view-badge" style="margin-left: auto; font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; background: #ecf0f3; box-shadow: 2px 2px 4px #d1d9e6, -2px -2px 4px #f9f9f9; color: #4B70E2;">Pretty</span>
+                    </div>
+                    <div class="aes-textareas" style="display: flex; gap: 20px;">
+                        <textarea id="json-input" class="input-area" style="height: 160px; font-family: monospace; font-size: 12px;" placeholder='{"key": "value", "list": [1, 2, 3]}'></textarea>
+                        <textarea id="json-output" class="input-area" style="height: 160px; font-family: monospace; font-size: 12px;" placeholder="결과..." readonly></textarea>
+                    </div>
+                    <div class="tool-actions">
+                        <button class="action-btn json-toggle-btn" id="json-pretty-btn" onclick="jsonFormat('pretty')" style="color: #4B70E2; box-shadow: inset 2px 2px 5px #d1d9e6, inset -2px -2px 5px #f9f9f9;"><i class="bi bi-indent"></i> Pretty</button>
+                        <button class="action-btn json-toggle-btn" id="json-minify-btn" onclick="jsonFormat('minify')"><i class="bi bi-text-left"></i> Minify</button>
+                        <button class="action-btn" onclick="copyText('json-output')"><i class="bi bi-clipboard"></i> 복사</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -413,6 +430,42 @@
                 result += charPool.charAt(Math.floor(Math.random() * charPool.length));
             }
             document.getElementById('rand-output').value = result;
+        }
+
+        // 5. JSON 포매터
+        let jsonCurrentMode = 'pretty';
+
+        function jsonFormat(mode) {
+            const input = document.getElementById('json-input').value.trim();
+            const output = document.getElementById('json-output');
+            const badge = document.getElementById('json-view-badge');
+            const prettyBtn = document.getElementById('json-pretty-btn');
+            const minifyBtn = document.getElementById('json-minify-btn');
+
+            if (!input) return;
+
+            try {
+                const parsed = JSON.parse(input);
+                jsonCurrentMode = mode;
+
+                if (mode === 'pretty') {
+                    output.value = JSON.stringify(parsed, null, 2);
+                    badge.textContent = 'Pretty';
+                    prettyBtn.style.boxShadow = 'inset 2px 2px 5px #d1d9e6, inset -2px -2px 5px #f9f9f9';
+                    prettyBtn.style.color = '#4B70E2';
+                    minifyBtn.style.boxShadow = '3px 3px 6px #d1d9e6, -3px -3px 6px #f9f9f9';
+                    minifyBtn.style.color = '#4B70E2';
+                } else {
+                    output.value = JSON.stringify(parsed);
+                    badge.textContent = 'Minify';
+                    minifyBtn.style.boxShadow = 'inset 2px 2px 5px #d1d9e6, inset -2px -2px 5px #f9f9f9';
+                    minifyBtn.style.color = '#4B70E2';
+                    prettyBtn.style.boxShadow = '3px 3px 6px #d1d9e6, -3px -3px 6px #f9f9f9';
+                    prettyBtn.style.color = '#4B70E2';
+                }
+            } catch (e) {
+                Swal.fire({ icon: 'error', title: '오류', text: '유효하지 않은 JSON 형식입니다.' });
+            }
         }
 
         // 4. AES 기능
