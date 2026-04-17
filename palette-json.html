@@ -184,11 +184,36 @@ function updateCardData(id, keyPath, value) {
     if (keyPath === 'light.autoFg' && value) p.light.color = getWCAGColor(p.light.bg);
     if (keyPath === 'dark.autoFg' && value) p.dark.color = getWCAGColor(p.dark.bg);
 
-    // 이름 변경 시 전체 유효성 검사를 위해 리렌더링, 색상 변경 시에는 해당 카드 DOM만 업데이트 (성능 최적화)
-    if (keyPath === 'name') renderCards(); 
+    // 이름 변경 시에는 포커스 유지를 위해 DOM 재생성 없이 유효성 표시만 갱신
+    if (keyPath === 'name') updateAllNameValidity();
     else updateCardUI(id);
 
     updateOutput();
+}
+
+function updateAllNameValidity() {
+    const names = palettes.map(p => p.name).filter(n => n !== "");
+    const duplicates = names.filter((item, index) => names.indexOf(item) !== index);
+
+    palettes.forEach(p => {
+        const card = document.getElementById(`card-${p.id}`);
+        if (!card) return;
+        const isValidFormat = /^[a-zA-Z0-9-]+$/.test(p.name) || p.name === "";
+        const isDuplicate = duplicates.includes(p.name) && p.name !== "";
+        const isReserved = RESERVED_WORDS.includes(p.name.toLowerCase());
+
+        const input = card.querySelector('input[data-role="name-input"]');
+        if (input) input.classList.toggle('is-invalid-name', !isValidFormat || isDuplicate);
+
+        const errs = card.querySelectorAll('.duplicate-error');
+        if (errs[0]) errs[0].style.display = isDuplicate ? 'block' : 'none';
+        if (errs[1]) errs[1].style.display = (!isValidFormat && p.name !== "") ? 'block' : 'none';
+
+        const reserved = card.querySelector('.reserved-warning');
+        if (reserved) reserved.style.display = isReserved ? 'block' : 'none';
+
+        updateCardUI(p.id); // 프리뷰 뱃지 이름 갱신
+    });
 }
 
 function toggleDarkSeparation(id) {
@@ -285,7 +310,7 @@ function renderCards() {
                 <div class="d-flex align-items-center mb-3">
                     <span class="drag-handle me-3" title="드래그로 순서 변경">☰</span>
                     <div class="flex-grow-1">
-                        <input type="text" class="form-control ${nameClass}" placeholder="팔레트 이름 (영문/숫자/하이픈)" 
+                        <input type="text" data-role="name-input" class="form-control ${nameClass}" placeholder="팔레트 이름 (영문/숫자/하이픈)"
                             value="${p.name}" oninput="updateCardData('${p.id}', 'name', this.value)">
                         <div class="duplicate-error mt-1" style="display: ${isDuplicate ? 'block' : 'none'}">중복된 이름입니다!</div>
                         <div class="duplicate-error mt-1" style="display: ${(!isValidFormat && p.name!=="") ? 'block' : 'none'}">영문, 숫자, 하이픈(-)만 가능합니다.</div>
