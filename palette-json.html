@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="ko" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudwiki Palette Builder</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding-bottom: 50px; }
+        .drag-handle { cursor: grab; font-size: 1.5rem; color: #888; }
+        .drag-handle:active { cursor: grabbing; }
+        .palette-card { transition: all 0.2s; }
+        .palette-card.dragging { opacity: 0.5; border: 2px dashed #0d6efd; }
+        .color-swatch {
+            width: 38px; height: 38px; border-radius: 4px; border: 1px solid #dee2e6;
+            cursor: pointer; display: inline-block; vertical-align: middle;
+        }
+        .preview-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 8px 16px; border-radius: 6px; font-weight: bold; min-width: 120px; transition: all 0.3s;
+        }
+        canvas { border: 1px solid #dee2e6; cursor: crosshair; }
+        .color-picker-container { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .is-invalid-name { border-color: #dc3545 !important; }
+        .is-invalid-hex { border-color: #dc3545 !important; background-color: #f8d7da !important; }
+        .reserved-warning { font-size: 0.8rem; color: #ffc107; display: none; }
+        .duplicate-error { font-size: 0.8rem; color: #dc3545; display: none; }
+    </style>
+</head>
+<body>
+
+<!-- 네비게이션 & 헤더 -->
+<nav class="navbar navbar-expand-lg bg-body-tertiary mb-4">
+    <div class="container">
+        <span class="navbar-brand mb-0 h1">🎨 Cloudwiki Palette Builder</span>
+        <button class="btn btn-outline-secondary btn-sm" id="pageThemeToggle">다크/라이트 모드 전환</button>
+    </div>
+</nav>
+
+<div class="container">
+    <!-- 사용법 안내 -->
+    <div class="alert alert-info">
+        <strong>사용 안내:</strong><br>
+        1. '+ 팔레트 추가' 버튼을 눌러 새 색상을 만드세요. (드래그로 순서 변경 가능)<br>
+        2. 배경색을 지정하면 WCAG 대비에 맞춰 글씨색이 자동 계산됩니다. (수동 변경 가능)<br>
+        3. 다크모드에서 다른 색상을 쓰고 싶다면 '다크모드 별도 색상'을 켜주세요.<br>
+        4. 완성된 JSON을 하단에서 복사하여 <code>wrangler.toml</code>의 <code>PALETTES</code> 항목에 붙여넣으세요.
+    </div>
+
+    <!-- 팔레트 항목 리스트 -->
+    <div id="paletteList" class="d-flex flex-column gap-3 mb-4"></div>
+
+    <!-- 추가 버튼 -->
+    <div class="text-center mb-5" id="addBtnContainer">
+        <button class="btn btn-primary btn-lg px-5" onclick="addCard()">+ 새 팔레트 추가</button>
+    </div>
+
+    <hr class="mb-5">
+
+    <!-- Import / Export 영역 -->
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <h4>Import (기존 JSON 불러오기)</h4>
+            <textarea id="importText" class="form-control font-monospace mb-2" rows="6" placeholder="여기에 JSON을 붙여넣으세요"></textarea>
+            <button class="btn btn-secondary w-100" onclick="importJSON()">불러오기</button>
+            <div id="importError" class="text-danger mt-2" style="display: none;">유효하지 않은 JSON 형식입니다.</div>
+        </div>
+        <div class="col-md-6 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h4 class="mb-0">Export (결과 JSON)</h4>
+                <div>
+                    <button class="btn btn-sm btn-outline-info" onclick="toggleJsonFormat()" id="formatBtn">Minify</button>
+                    <button class="btn btn-sm btn-success" onclick="copyJSON()">복사</button>
+                </div>
+            </div>
+            <textarea id="exportText" class="form-control font-monospace mb-2" rows="6" readonly></textarea>
+            <p class="text-muted small mb-0">복사 후 <code>wrangler.toml</code> <strong>[vars] PALETTES</strong> 에 붙여넣으세요.</p>
+        </div>
+    </div>
+</div>
+
+<!-- 커스텀 컬러 피커 모달 (제공된 코드 적용) -->
+<div class="modal fade" id="colorPickerModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">색상 선택</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body color-picker-container">
+                <canvas id="colorPaletteCanvas" width="256" height="256"></canvas>
+                <canvas id="colorHueSlider" width="256" height="20"></canvas>
+                
+                <div class="d-flex align-items-center gap-2 mt-2 w-100">
+                    <div id="colorPreviewBox" class="color-swatch"></div>
+                    <input type="text" id="colorHexInput" class="form-control text-uppercase" maxlength="7">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" onclick="applyColor()">적용</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bootstrap & JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+/* =========================================
+   전역 상태 및 초기 설정
+========================================= */
+let palettes = [];
+let isPrettyJson = true;
+const RESERVED_WORDS = ['primary', 'secondary', 'success', 'info', 'warning', 'danger', 'muted'];
+
+// 컬러 피커 관련 상태
+let colorAc = { hue: 0, saturation: 1, brightness: 1 };
+let targetCardId = null;
+let targetField = null; // 'light.bg', 'light.color', 'dark.bg', 'dark.color'
+let isDraggingPalette = false;
+let isDraggingHue = false;
+const colorModal = new bootstrap.Modal(document.getElementById('colorPickerModal'));
+
+/* =========================================
+   UI 렌더링 & 카드 관리
+========================================= */
+function addCard() {
+    const id = Date.now().toString();
+    palettes.push({
+        id: id,
+        name: "",
+        hasDark: false,
+        light: { bg: "#0d6efd", color: "#ffffff", autoFg: true },
+        dark: { bg: "#0a58ca", color: "#ffffff", autoFg: true },
+        previewMode: 'light' // 뱃지 프리뷰 토글용 상태
+    });
+    renderCards();
+    updateOutput();
+}
+
+function deleteCard(id) {
+    palettes = palettes.filter(p => p.id !== id);
+    renderCards();
+    updateOutput();
+}
+
+function updateCardData(id, keyPath, value) {
+    const p = palettes.find(p => p.id === id);
+    if(!p) return;
+    
+    // 키 경로 파싱 (예: 'light.bg')
+    const keys = keyPath.split('.');
+    if(keys.length === 1) p[keys[0]] = value;
+    else p[keys[0]][keys[1]] = value;
+
+    // 자동 글씨색 (WCAG) 처리
+    if (keyPath === 'light.bg' && p.light.autoFg) p.light.color = getWCAGColor(p.light.bg);
+    if (keyPath === 'dark.bg' && p.dark.autoFg) p.dark.color = getWCAGColor(p.dark.bg);
+    
+    if (keyPath === 'light.autoFg' && value) p.light.color = getWCAGColor(p.light.bg);
+    if (keyPath === 'dark.autoFg' && value) p.dark.color = getWCAGColor(p.dark.bg);
+
+    // 이름 변경 시 전체 유효성 검사를 위해 리렌더링, 색상 변경 시에는 해당 카드 DOM만 업데이트 (성능 최적화)
+    if (keyPath === 'name') renderCards(); 
+    else updateCardUI(id);
+
+    updateOutput();
+}
+
+function toggleDarkSeparation(id) {
+    const p = palettes.find(p => p.id === id);
+    p.hasDark = !p.hasDark;
+    if(p.hasDark) {
+        // 토글 켤 때 라이트 설정 복사
+        p.dark.bg = p.light.bg;
+        p.dark.color = p.light.color;
+        p.dark.autoFg = p.light.autoFg;
+        p.previewMode = 'dark';
+    } else {
+        p.previewMode = 'light';
+    }
+    renderCards();
+    updateOutput();
+}
+
+function togglePreviewMode(id) {
+    const p = palettes.find(p => p.id === id);
+    p.previewMode = p.previewMode === 'light' ? 'dark' : 'light';
+    updateCardUI(id);
+}
+
+// 개별 카드 UI (색상/프리뷰) 부분 업데이트
+function updateCardUI(id) {
+    const p = palettes.find(p => p.id === id);
+    const card = document.getElementById(`card-${id}`);
+    if(!card) return;
+
+    // 라이트 모드 색상 갱신
+    card.querySelector('.swatch-light-bg').style.backgroundColor = p.light.bg;
+    card.querySelector('.input-light-bg').value = p.light.bg;
+    card.querySelector('.swatch-light-color').style.backgroundColor = p.light.color;
+    const inputLColor = card.querySelector('.input-light-color');
+    inputLColor.value = p.light.color;
+    inputLColor.disabled = p.light.autoFg;
+
+    // 다크 모드 색상 갱신 (활성화 시)
+    if(p.hasDark) {
+        card.querySelector('.swatch-dark-bg').style.backgroundColor = p.dark.bg;
+        card.querySelector('.input-dark-bg').value = p.dark.bg;
+        card.querySelector('.swatch-dark-color').style.backgroundColor = p.dark.color;
+        const inputDColor = card.querySelector('.input-dark-color');
+        inputDColor.value = p.dark.color;
+        inputDColor.disabled = p.dark.autoFg;
+    }
+
+    // 뱃지 프리뷰 갱신
+    const badge = card.querySelector('.preview-badge');
+    const toggleBtn = card.querySelector('.preview-toggle-btn');
+    
+    if (p.hasDark && p.previewMode === 'dark') {
+        badge.style.backgroundColor = p.dark.bg;
+        badge.style.color = p.dark.color;
+        badge.textContent = `${p.name || 'Preview'} (Dark)`;
+        if(toggleBtn) toggleBtn.textContent = '라이트로 보기';
+    } else {
+        badge.style.backgroundColor = p.light.bg;
+        badge.style.color = p.light.color;
+        badge.textContent = `${p.name || 'Preview'} (Light)`;
+        if(toggleBtn) toggleBtn.textContent = '다크로 보기';
+    }
+}
+
+function renderCards() {
+    const list = document.getElementById('paletteList');
+    list.innerHTML = '';
+    
+    // 이름 중복 검사용
+    const names = palettes.map(p => p.name).filter(n => n !== "");
+    const duplicates = names.filter((item, index) => names.indexOf(item) !== index);
+
+    palettes.forEach((p, index) => {
+        const isValidFormat = /^[a-zA-Z0-9-]+$/.test(p.name) || p.name === "";
+        const isDuplicate = duplicates.includes(p.name) && p.name !== "";
+        const isReserved = RESERVED_WORDS.includes(p.name.toLowerCase());
+        
+        const nameClass = (!isValidFormat || isDuplicate) ? 'is-invalid-name' : '';
+
+        const card = document.createElement('div');
+        card.className = `card palette-card`;
+        card.id = `card-${p.id}`;
+        card.draggable = true;
+        
+        // 드래그 앤 드롭 이벤트 바인딩
+        card.addEventListener('dragstart', handleDragStart);
+        card.addEventListener('dragover', handleDragOver);
+        card.addEventListener('drop', handleDrop);
+        card.addEventListener('dragenter', e => e.preventDefault());
+
+        card.innerHTML = `
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                    <span class="drag-handle me-3" title="드래그로 순서 변경">☰</span>
+                    <div class="flex-grow-1">
+                        <input type="text" class="form-control ${nameClass}" placeholder="팔레트 이름 (영문/숫자/하이픈)" 
+                            value="${p.name}" oninput="updateCardData('${p.id}', 'name', this.value)">
+                        <div class="duplicate-error mt-1" style="display: ${isDuplicate ? 'block' : 'none'}">중복된 이름입니다!</div>
+                        <div class="duplicate-error mt-1" style="display: ${(!isValidFormat && p.name!=="") ? 'block' : 'none'}">영문, 숫자, 하이픈(-)만 가능합니다.</div>
+                        <div class="reserved-warning mt-1" style="display: ${isReserved ? 'block' : 'none'}">⚠️ 예약어입니다. (기본 색상이 덮어씌워집니다)</div>
+                    </div>
+                    <button class="btn btn-outline-danger ms-3" onclick="deleteCard('${p.id}')">삭제</button>
+                </div>
+
+                <div class="row align-items-center">
+                    <!-- 색상 설정 영역 -->
+                    <div class="col-md-7">
+                        <div class="mb-3 d-flex align-items-center gap-2">
+                            <span class="fw-bold me-2" style="width: 50px;">배경</span>
+                            <div class="color-swatch swatch-light-bg" style="background:${p.light.bg}" onclick="openPicker('${p.id}', 'light.bg', '${p.light.bg}')"></div>
+                            <input type="text" class="form-control input-light-bg font-monospace" style="width: 100px;" value="${p.light.bg}" 
+                                onchange="validateAndSetHex('${p.id}', 'light.bg', this)">
+                            
+                            <span class="fw-bold ms-3 me-2">글씨</span>
+                            <div class="color-swatch swatch-light-color" style="background:${p.light.color}" onclick="if(!${p.light.autoFg}) openPicker('${p.id}', 'light.color', '${p.light.color}')"></div>
+                            <input type="text" class="form-control input-light-color font-monospace" style="width: 100px;" value="${p.light.color}" ${p.light.autoFg ? 'disabled' : ''}
+                                onchange="validateAndSetHex('${p.id}', 'light.color', this)">
+                            <div class="form-check ms-2">
+                                <input class="form-check-input" type="checkbox" id="autoFg_${p.id}" ${p.light.autoFg ? 'checked' : ''} 
+                                    onchange="updateCardData('${p.id}', 'light.autoFg', this.checked)">
+                                <label class="form-check-label small" for="autoFg_${p.id}">자동 (WCAG)</label>
+                            </div>
+                        </div>
+
+                        <!-- 다크모드 토글 및 추가 설정 -->
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="hasDark_${p.id}" ${p.hasDark ? 'checked' : ''} onchange="toggleDarkSeparation('${p.id}')">
+                            <label class="form-check-label" for="hasDark_${p.id}">다크모드 별도 색상 지정</label>
+                        </div>
+
+                        ${p.hasDark ? `
+                        <div class="p-2 border rounded bg-dark-subtle d-flex align-items-center gap-2">
+                            <span class="fw-bold me-2" style="width: 50px;">Dark BG</span>
+                            <div class="color-swatch swatch-dark-bg" style="background:${p.dark.bg}" onclick="openPicker('${p.id}', 'dark.bg', '${p.dark.bg}')"></div>
+                            <input type="text" class="form-control input-dark-bg font-monospace" style="width: 100px;" value="${p.dark.bg}" 
+                                onchange="validateAndSetHex('${p.id}', 'dark.bg', this)">
+                            
+                            <span class="fw-bold ms-3 me-2">Dark FG</span>
+                            <div class="color-swatch swatch-dark-color" style="background:${p.dark.color}" onclick="if(!${p.dark.autoFg}) openPicker('${p.id}', 'dark.color', '${p.dark.color}')"></div>
+                            <input type="text" class="form-control input-dark-color font-monospace" style="width: 100px;" value="${p.dark.color}" ${p.dark.autoFg ? 'disabled' : ''}
+                                onchange="validateAndSetHex('${p.id}', 'dark.color', this)">
+                            <div class="form-check ms-2">
+                                <input class="form-check-input" type="checkbox" id="autoFgDark_${p.id}" ${p.dark.autoFg ? 'checked' : ''} 
+                                    onchange="updateCardData('${p.id}', 'dark.autoFg', this.checked)">
+                                <label class="form-check-label small" for="autoFgDark_${p.id}">자동</label>
+                            </div>
+                        </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- 프리뷰 뱃지 영역 -->
+                    <div class="col-md-5 d-flex flex-column align-items-center justify-content-center border-start">
+                        <div class="mb-2 text-muted small">실시간 뱃지 프리뷰</div>
+                        <div class="preview-badge mb-2"></div>
+                        ${p.hasDark ? `<button class="btn btn-sm btn-outline-secondary preview-toggle-btn" onclick="togglePreviewMode('${p.id}')">토글</button>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+        list.appendChild(card);
+        updateCardUI(p.id); // 초기 프리뷰/색상 설정
+    });
+
+    const addBtnContainer = document.getElementById('addBtnContainer');
+    if(palettes.length === 0) {
+        addBtnContainer.classList.add('mt-5', 'py-5');
+    } else {
+        addBtnContainer.classList.remove('mt-5', 'py-5');
+    }
+}
+
+function validateAndSetHex(id, field, inputEl) {
+    const val = inputEl.value;
+    if(/^#([0-9A-F]{3}){1,2}$/i.test(val)) {
+        inputEl.classList.remove('is-invalid-hex');
+        // 짧은 hex(#fff)를 6자리로 변환 처리 방지 (브라우저나 정규식에서 허용하더라도 통일성 위해)
+        let fullHex = val;
+        if(val.length === 4) {
+            fullHex = '#' + val[1]+val[1] + val[2]+val[2] + val[3]+val[3];
+        }
+        updateCardData(id, field, fullHex.toUpperCase());
+    } else {
+        inputEl.classList.add('is-invalid-hex');
+    }
+}
+
+/* =========================================
+   WCAG 및 컬러 유틸
+========================================= */
+function hexToRgb(hex) {
+    let c = hex.substring(1).split('');
+    if(c.length === 3) c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+    c = '0x' + c.join('');
+    return [(c>>16)&255, (c>>8)&255, c&255];
+}
+
+function getWCAGColor(hex) {
+    const rgb = hexToRgb(hex);
+    if(!rgb) return "#FFFFFF";
+    // 프롬프트 요구사항: luminance > 0.5 -> #000, otherwise -> #FFF
+    const luminance = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
+    return luminance > 0.5 ? "#000000" : "#FFFFFF";
+}
+
+/* =========================================
+   드래그 앤 드롭 (순서 변경)
+========================================= */
+let draggedId = null;
+
+function handleDragStart(e) {
+    draggedId = this.id.replace('card-', '');
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => this.classList.add('dragging'), 0);
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const list = document.getElementById('paletteList');
+    const target = e.target.closest('.palette-card');
+    if(target && target.id !== `card-${draggedId}`) {
+        const rect = target.getBoundingClientRect();
+        const next = (e.clientY - rect.top)/(rect.bottom - rect.top) > 0.5;
+        list.insertBefore(document.getElementById(`card-${draggedId}`), next ? target.nextSibling : target);
+    }
+}
+
+function handleDrop(e) {
+    e.stopPropagation();
+    document.getElementById(`card-${draggedId}`).classList.remove('dragging');
+    
+    // DOM 순서대로 palettes 배열 재정렬
+    const newPalettes = [];
+    document.querySelectorAll('.palette-card').forEach(card => {
+        const id = card.id.replace('card-', '');
+        newPalettes.push(palettes.find(p => p.id === id));
+    });
+    palettes = newPalettes;
+    updateOutput();
+}
+
+/* =========================================
+   Import / Export (JSON 파싱 및 생성)
+========================================= */
+function generateJSONObj() {
+    const obj = {};
+    const names = palettes.map(p => p.name).filter(n => n !== "");
+    const duplicates = names.filter((item, index) => names.indexOf(item) !== index);
+
+    palettes.forEach(p => {
+        // 이름 없거나 중복, 형식오류면 무시
+        if(!p.name || duplicates.includes(p.name) || !/^[a-zA-Z0-9-]+$/.test(p.name)) return;
+        
+        if(p.hasDark) {
+            obj[p.name] = {
+                light: { bg: p.light.bg, color: p.light.color },
+                dark: { bg: p.dark.bg, color: p.dark.color }
+            };
+        } else {
+            obj[p.name] = { bg: p.light.bg, color: p.light.color };
+        }
+    });
+    return obj;
+}
+
+function updateOutput() {
+    const obj = generateJSONObj();
+    const textarea = document.getElementById('exportText');
+    textarea.value = isPrettyJson ? JSON.stringify(obj, null, 2) : JSON.stringify(obj);
+}
+
+function toggleJsonFormat() {
+    isPrettyJson = !isPrettyJson;
+    document.getElementById('formatBtn').textContent = isPrettyJson ? "Minify" : "Pretty";
+    updateOutput();
+}
+
+function copyJSON() {
+    const text = document.getElementById('exportText').value;
+    navigator.clipboard.writeText(text).then(() => alert('클립보드에 복사되었습니다!'));
+}
+
+function importJSON() {
+    const text = document.getElementById('importText').value;
+    const errDiv = document.getElementById('importError');
+    try {
+        const obj = JSON.parse(text);
+        palettes = [];
+        for (const [name, data] of Object.entries(obj)) {
+            const hasDark = data.hasOwnProperty('light') && data.hasOwnProperty('dark');
+            const id = Date.now().toString() + Math.random().toString(36).substring(2, 5);
+            
+            palettes.push({
+                id: id,
+                name: name,
+                hasDark: hasDark,
+                light: {
+                    bg: hasDark ? data.light.bg : data.bg,
+                    color: hasDark ? data.light.color : data.color,
+                    autoFg: false // Import 시에는 기본적으로 수동 모드로 둠 (원본 유지 위해)
+                },
+                dark: {
+                    bg: hasDark ? data.dark.bg : "#000000",
+                    color: hasDark ? data.dark.color : "#FFFFFF",
+                    autoFg: false
+                },
+                previewMode: 'light'
+            });
+        }
+        errDiv.style.display = 'none';
+        renderCards();
+        updateOutput();
+        alert('성공적으로 불러왔습니다.');
+    } catch(e) {
+        errDiv.style.display = 'block';
+    }
+}
+
+
+/* =========================================
+   커스텀 캔버스 컬러 피커 로직 (제공 코드 통합)
+========================================= */
+function hsvToRgb(h, s, v) {
+    let r, g, b;
+    let i = Math.floor(h / 60);
+    let f = h / 60 - i;
+    let p = v * (1 - s);
+    let q = v * (1 - f * s);
+    let t = v * (1 - (1 - f) * s);
+    switch (i % 6) {
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+    }
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+function rgbToHex(r, g, b) {
+    return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1).toUpperCase();
+}
+
+function hsvToHex(h, s, v) {
+    const rgb = hsvToRgb(h, s, v);
+    return rgbToHex(rgb[0], rgb[1], rgb[2]);
+}
+
+function hexToHsv(hex) {
+    const rgb = hexToRgb(hex);
+    if(!rgb) return {h:0, s:1, v:1};
+    let r = rgb[0]/255, g = rgb[1]/255, b = rgb[2]/255;
+    let max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, v = max;
+    let d = max - min;
+    s = max === 0 ? 0 : d / max;
+    if(max === min) {
+        h = 0; // achromatic
+    } else {
+        switch(max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    return { h: h * 360, s: s, v: v };
+}
+
+function openPicker(cardId, field, currentHex) {
+    targetCardId = cardId;
+    targetField = field;
+    
+    const hsv = hexToHsv(currentHex);
+    colorAc.hue = hsv.h;
+    colorAc.saturation = hsv.s;
+    colorAc.brightness = hsv.v;
+
+    document.getElementById('colorHexInput').value = currentHex.toUpperCase();
+    
+    drawColorPalette();
+    drawHueSlider();
+    updateColorPreview();
+    
+    colorModal.show();
+}
+
+function applyColor() {
+    const hex = document.getElementById('colorHexInput').value;
+    if(/^#([0-9A-F]{6})$/i.test(hex)) {
+        updateCardData(targetCardId, targetField, hex);
+        colorModal.hide();
+    } else {
+        alert('올바른 HEX 코드가 아닙니다.');
+    }
+}
+
+// 제공된 캔버스 드로잉 로직
+function drawColorPalette() {
+    const canvas = document.getElementById('colorPaletteCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+
+    // 배경: 왼→오 = 흰색→순색 (채도), 위→아래 = 밝음→검정 (명도)
+    for (let x = 0; x <= w; x+=2) { // 성능을 위해 step 조정
+        const s = x / w;
+        for (let y = 0; y <= h; y+=2) {
+            const v = 1 - y / h;
+            ctx.fillStyle = hsvToHex(colorAc.hue, s, v);
+            ctx.fillRect(x, y, 2, 2);
+        }
+    }
+
+    // 선택 위치 표시
+    const cx = colorAc.saturation * w;
+    const cy = (1 - colorAc.brightness) * h;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+function drawHueSlider() {
+    const canvas = document.getElementById('colorHueSlider');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+
+    const gradient = ctx.createLinearGradient(0, 0, w, 0);
+    for (let i = 0; i <= 6; i++) {
+        gradient.addColorStop(i / 6, hsvToHex(i * 60, 1, 1));
+    }
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+
+    // 선택 위치 표시
+    const cx = (colorAc.hue / 360) * w;
+    ctx.beginPath();
+    ctx.rect(cx - 3, 0, 6, h);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.rect(cx - 4, -1, 8, h + 2);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+function updateColorPreview() {
+    const hex = hsvToHex(colorAc.hue, colorAc.saturation, colorAc.brightness);
+    const previewBox = document.getElementById('colorPreviewBox');
+    const hexInput = document.getElementById('colorHexInput');
+    if (previewBox) previewBox.style.backgroundColor = hex;
+    if (hexInput) hexInput.value = hex.toUpperCase();
+}
+
+// 캔버스 마우스 이벤트 처리
+const paletteCanvas = document.getElementById('colorPaletteCanvas');
+const hueCanvas = document.getElementById('colorHueSlider');
+
+function handlePaletteMouse(e) {
+    if(!isDraggingPalette) return;
+    const rect = paletteCanvas.getBoundingClientRect();
+    let x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    let y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+    
+    colorAc.saturation = x / rect.width;
+    colorAc.brightness = 1 - (y / rect.height);
+    
+    drawColorPalette();
+    updateColorPreview();
+}
+
+function handleHueMouse(e) {
+    if(!isDraggingHue) return;
+    const rect = hueCanvas.getBoundingClientRect();
+    let x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    
+    colorAc.hue = (x / rect.width) * 360;
+    
+    drawColorPalette();
+    drawHueSlider();
+    updateColorPreview();
+}
+
+paletteCanvas.addEventListener('mousedown', e => { isDraggingPalette = true; handlePaletteMouse(e); });
+hueCanvas.addEventListener('mousedown', e => { isDraggingHue = true; handleHueMouse(e); });
+
+window.addEventListener('mousemove', e => {
+    if(isDraggingPalette) handlePaletteMouse(e);
+    if(isDraggingHue) handleHueMouse(e);
+});
+
+window.addEventListener('mouseup', () => {
+    isDraggingPalette = false;
+    isDraggingHue = false;
+});
+
+// Hex 직접 입력 시 캔버스 동기화
+document.getElementById('colorHexInput').addEventListener('change', function() {
+    const val = this.value;
+    if(/^#([0-9A-F]{6})$/i.test(val)) {
+        const hsv = hexToHsv(val);
+        colorAc.hue = hsv.h;
+        colorAc.saturation = hsv.s;
+        colorAc.brightness = hsv.v;
+        drawColorPalette();
+        drawHueSlider();
+        updateColorPreview();
+    }
+});
+
+/* =========================================
+   페이지 다크모드 토글
+========================================= */
+document.getElementById('pageThemeToggle').addEventListener('click', () => {
+    const html = document.documentElement;
+    const current = html.getAttribute('data-bs-theme');
+    html.setAttribute('data-bs-theme', current === 'dark' ? 'light' : 'dark');
+});
+
+// 초기 실행
+renderCards();
+updateOutput();
+
+</script>
+</body>
+</html>
