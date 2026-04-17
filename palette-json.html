@@ -8,24 +8,46 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { padding-bottom: 50px; }
-        .drag-handle { cursor: grab; font-size: 1.5rem; color: #888; }
+        .drag-handle {
+            cursor: grab; font-size: 1.5rem; color: #888;
+            padding: 8px 10px; touch-action: none;
+            user-select: none; -webkit-user-select: none;
+        }
         .drag-handle:active { cursor: grabbing; }
         .palette-card { transition: all 0.2s; }
         .palette-card.dragging { opacity: 0.5; border: 2px dashed #0d6efd; }
         .color-swatch {
-            width: 38px; height: 38px; border-radius: 4px; border: 1px solid #dee2e6;
+            width: 38px; height: 38px; min-width: 38px; border-radius: 4px; border: 1px solid #dee2e6;
             cursor: pointer; display: inline-block; vertical-align: middle;
         }
         .preview-badge {
             display: inline-flex; align-items: center; justify-content: center;
             padding: 8px 16px; border-radius: 6px; font-weight: bold; min-width: 120px; transition: all 0.3s;
         }
-        canvas { border: 1px solid #dee2e6; cursor: crosshair; }
+        canvas { border: 1px solid #dee2e6; cursor: crosshair; touch-action: none; max-width: 100%; }
         .color-picker-container { display: flex; flex-direction: column; align-items: center; gap: 10px; }
         .is-invalid-name { border-color: #dc3545 !important; }
         .is-invalid-hex { border-color: #dc3545 !important; background-color: #f8d7da !important; }
         .reserved-warning { font-size: 0.8rem; color: #ffc107; display: none; }
         .duplicate-error { font-size: 0.8rem; color: #dc3545; display: none; }
+
+        /* 터치 및 모바일 최적화 */
+        .color-row { flex-wrap: wrap; row-gap: 8px; }
+        .color-row .hex-input { width: 110px; }
+        .color-row .label-fixed { width: 50px; }
+
+        @media (max-width: 767.98px) {
+            .drag-handle { font-size: 1.75rem; padding: 10px 12px; }
+            .color-swatch { width: 44px; height: 44px; min-width: 44px; }
+            .color-row .hex-input { flex: 1 1 120px; width: auto; min-width: 110px; }
+            .color-row .label-fixed { width: auto; }
+            .preview-col { border-left: none !important; border-top: 1px solid var(--bs-border-color); margin-top: 1rem; padding-top: 1rem; }
+            .preview-badge { min-width: 140px; }
+            #colorPaletteCanvas { width: 100%; height: auto; aspect-ratio: 1 / 1; }
+            #colorHueSlider { width: 100%; }
+            .btn { min-height: 40px; }
+            .form-check-input { width: 1.25em; height: 1.25em; }
+        }
     </style>
 </head>
 <body>
@@ -272,21 +294,21 @@ function renderCards() {
                     <button class="btn btn-outline-danger ms-3" onclick="deleteCard('${p.id}')">삭제</button>
                 </div>
 
-                <div class="row align-items-center">
+                <div class="row align-items-center g-3">
                     <!-- 색상 설정 영역 -->
                     <div class="col-md-7">
-                        <div class="mb-3 d-flex align-items-center gap-2">
-                            <span class="fw-bold me-2" style="width: 50px;">배경</span>
+                        <div class="mb-3 d-flex align-items-center gap-2 color-row">
+                            <span class="fw-bold me-2 label-fixed">배경</span>
                             <div class="color-swatch swatch-light-bg" style="background:${p.light.bg}" onclick="openPicker('${p.id}', 'light.bg', '${p.light.bg}')"></div>
-                            <input type="text" class="form-control input-light-bg font-monospace" style="width: 100px;" value="${p.light.bg}" 
+                            <input type="text" class="form-control input-light-bg font-monospace hex-input" value="${p.light.bg}"
                                 onchange="validateAndSetHex('${p.id}', 'light.bg', this)">
-                            
+
                             <span class="fw-bold ms-3 me-2">글씨</span>
                             <div class="color-swatch swatch-light-color" style="background:${p.light.color}" onclick="if(!${p.light.autoFg}) openPicker('${p.id}', 'light.color', '${p.light.color}')"></div>
-                            <input type="text" class="form-control input-light-color font-monospace" style="width: 100px;" value="${p.light.color}" ${p.light.autoFg ? 'disabled' : ''}
+                            <input type="text" class="form-control input-light-color font-monospace hex-input" value="${p.light.color}" ${p.light.autoFg ? 'disabled' : ''}
                                 onchange="validateAndSetHex('${p.id}', 'light.color', this)">
                             <div class="form-check ms-2">
-                                <input class="form-check-input" type="checkbox" id="autoFg_${p.id}" ${p.light.autoFg ? 'checked' : ''} 
+                                <input class="form-check-input" type="checkbox" id="autoFg_${p.id}" ${p.light.autoFg ? 'checked' : ''}
                                     onchange="updateCardData('${p.id}', 'light.autoFg', this.checked)">
                                 <label class="form-check-label small" for="autoFg_${p.id}">자동 (WCAG)</label>
                             </div>
@@ -299,18 +321,18 @@ function renderCards() {
                         </div>
 
                         ${p.hasDark ? `
-                        <div class="p-2 border rounded bg-dark-subtle d-flex align-items-center gap-2">
-                            <span class="fw-bold me-2" style="width: 50px;">Dark BG</span>
+                        <div class="p-2 border rounded bg-dark-subtle d-flex align-items-center gap-2 color-row">
+                            <span class="fw-bold me-2 label-fixed">Dark BG</span>
                             <div class="color-swatch swatch-dark-bg" style="background:${p.dark.bg}" onclick="openPicker('${p.id}', 'dark.bg', '${p.dark.bg}')"></div>
-                            <input type="text" class="form-control input-dark-bg font-monospace" style="width: 100px;" value="${p.dark.bg}" 
+                            <input type="text" class="form-control input-dark-bg font-monospace hex-input" value="${p.dark.bg}"
                                 onchange="validateAndSetHex('${p.id}', 'dark.bg', this)">
-                            
+
                             <span class="fw-bold ms-3 me-2">Dark FG</span>
                             <div class="color-swatch swatch-dark-color" style="background:${p.dark.color}" onclick="if(!${p.dark.autoFg}) openPicker('${p.id}', 'dark.color', '${p.dark.color}')"></div>
-                            <input type="text" class="form-control input-dark-color font-monospace" style="width: 100px;" value="${p.dark.color}" ${p.dark.autoFg ? 'disabled' : ''}
+                            <input type="text" class="form-control input-dark-color font-monospace hex-input" value="${p.dark.color}" ${p.dark.autoFg ? 'disabled' : ''}
                                 onchange="validateAndSetHex('${p.id}', 'dark.color', this)">
                             <div class="form-check ms-2">
-                                <input class="form-check-input" type="checkbox" id="autoFgDark_${p.id}" ${p.dark.autoFg ? 'checked' : ''} 
+                                <input class="form-check-input" type="checkbox" id="autoFgDark_${p.id}" ${p.dark.autoFg ? 'checked' : ''}
                                     onchange="updateCardData('${p.id}', 'dark.autoFg', this.checked)">
                                 <label class="form-check-label small" for="autoFgDark_${p.id}">자동</label>
                             </div>
@@ -319,7 +341,7 @@ function renderCards() {
                     </div>
 
                     <!-- 프리뷰 뱃지 영역 -->
-                    <div class="col-md-5 d-flex flex-column align-items-center justify-content-center border-start">
+                    <div class="col-md-5 d-flex flex-column align-items-center justify-content-center border-start preview-col">
                         <div class="mb-2 text-muted small">실시간 뱃지 프리뷰</div>
                         <div class="preview-badge mb-2"></div>
                         ${p.hasDark ? `<button class="btn btn-sm btn-outline-secondary preview-toggle-btn" onclick="togglePreviewMode('${p.id}')">토글</button>` : ''}
@@ -633,19 +655,26 @@ function updateColorPreview() {
     if (hexInput) hexInput.value = hex.toUpperCase();
 }
 
-// 캔버스 마우스 이벤트 처리
+// 캔버스 마우스/터치 이벤트 처리
 const paletteCanvas = document.getElementById('colorPaletteCanvas');
 const hueCanvas = document.getElementById('colorHueSlider');
+
+function getEventPoint(e) {
+    if (e.touches && e.touches.length > 0) return e.touches[0];
+    if (e.changedTouches && e.changedTouches.length > 0) return e.changedTouches[0];
+    return e;
+}
 
 function handlePaletteMouse(e) {
     if(!isDraggingPalette) return;
     const rect = paletteCanvas.getBoundingClientRect();
-    let x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-    let y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-    
+    const pt = getEventPoint(e);
+    let x = Math.max(0, Math.min(pt.clientX - rect.left, rect.width));
+    let y = Math.max(0, Math.min(pt.clientY - rect.top, rect.height));
+
     colorAc.saturation = x / rect.width;
     colorAc.brightness = 1 - (y / rect.height);
-    
+
     drawColorPalette();
     updateColorPreview();
 }
@@ -653,10 +682,11 @@ function handlePaletteMouse(e) {
 function handleHueMouse(e) {
     if(!isDraggingHue) return;
     const rect = hueCanvas.getBoundingClientRect();
-    let x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-    
+    const pt = getEventPoint(e);
+    let x = Math.max(0, Math.min(pt.clientX - rect.left, rect.width));
+
     colorAc.hue = (x / rect.width) * 360;
-    
+
     drawColorPalette();
     drawHueSlider();
     updateColorPreview();
@@ -665,12 +695,37 @@ function handleHueMouse(e) {
 paletteCanvas.addEventListener('mousedown', e => { isDraggingPalette = true; handlePaletteMouse(e); });
 hueCanvas.addEventListener('mousedown', e => { isDraggingHue = true; handleHueMouse(e); });
 
+paletteCanvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    isDraggingPalette = true;
+    handlePaletteMouse(e);
+}, { passive: false });
+hueCanvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    isDraggingHue = true;
+    handleHueMouse(e);
+}, { passive: false });
+
 window.addEventListener('mousemove', e => {
     if(isDraggingPalette) handlePaletteMouse(e);
     if(isDraggingHue) handleHueMouse(e);
 });
 
+window.addEventListener('touchmove', e => {
+    if(isDraggingPalette) { e.preventDefault(); handlePaletteMouse(e); }
+    if(isDraggingHue) { e.preventDefault(); handleHueMouse(e); }
+}, { passive: false });
+
 window.addEventListener('mouseup', () => {
+    isDraggingPalette = false;
+    isDraggingHue = false;
+});
+
+window.addEventListener('touchend', () => {
+    isDraggingPalette = false;
+    isDraggingHue = false;
+});
+window.addEventListener('touchcancel', () => {
     isDraggingPalette = false;
     isDraggingHue = false;
 });
@@ -688,6 +743,60 @@ document.getElementById('colorHexInput').addEventListener('change', function() {
         updateColorPreview();
     }
 });
+
+/* =========================================
+   터치 기반 카드 순서 변경 (모바일 대응)
+========================================= */
+let touchDraggingCard = null;
+
+function reorderPalettesFromDOM() {
+    const newPalettes = [];
+    document.querySelectorAll('.palette-card').forEach(card => {
+        const id = card.id.replace('card-', '');
+        const found = palettes.find(p => p.id === id);
+        if (found) newPalettes.push(found);
+    });
+    palettes = newPalettes;
+}
+
+document.getElementById('paletteList').addEventListener('touchstart', function(e) {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    const card = handle.closest('.palette-card');
+    if (!card) return;
+
+    e.preventDefault();
+    touchDraggingCard = card;
+    draggedId = card.id.replace('card-', '');
+    card.classList.add('dragging');
+}, { passive: false });
+
+document.getElementById('paletteList').addEventListener('touchmove', function(e) {
+    if (!touchDraggingCard) return;
+    e.preventDefault();
+
+    const touch = e.touches[0];
+    const list = document.getElementById('paletteList');
+    const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+    const target = elementBelow ? elementBelow.closest('.palette-card') : null;
+
+    if (target && target !== touchDraggingCard) {
+        const rect = target.getBoundingClientRect();
+        const next = (touch.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
+        list.insertBefore(touchDraggingCard, next ? target.nextSibling : target);
+    }
+}, { passive: false });
+
+function endTouchDrag() {
+    if (!touchDraggingCard) return;
+    touchDraggingCard.classList.remove('dragging');
+    touchDraggingCard = null;
+    reorderPalettesFromDOM();
+    updateOutput();
+}
+
+document.getElementById('paletteList').addEventListener('touchend', endTouchDrag);
+document.getElementById('paletteList').addEventListener('touchcancel', endTouchDrag);
 
 /* =========================================
    페이지 다크모드 토글

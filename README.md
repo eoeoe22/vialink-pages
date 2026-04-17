@@ -30,3 +30,7 @@ Web Audio API 기반 간이 주파수 응답 분석기
 [gitsync-json.html](https://vialinks.xyz/gitsync-json)
 
 [Gitsync](https://github.com/eoeoe22/gitsync-public)레포지토리 설정 json 제작기
+
+[palette-json.html](https://vialinks.xyz/palette.json)
+
+Cloudwiki 커스텀 색상 팔레트 (배경/글씨색) json 제작기. WCAG 대비 기반 글씨색 자동 계산, 다크모드 별도 색상 지정, 드래그로 순서 변경 지원
