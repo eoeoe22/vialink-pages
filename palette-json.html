@@ -55,7 +55,7 @@
 <!-- 네비게이션 & 헤더 -->
 <nav class="navbar navbar-expand-lg bg-body-tertiary mb-4">
     <div class="container">
-        <span class="navbar-brand mb-0 h1">🎨 Cloudwiki Palette Builder</span>
+        <span class="navbar-brand mb-0 h1">🎨 Cloudwiki Palette Builder (Deprecated)</span>
         <button class="btn btn-outline-secondary btn-sm" id="pageThemeToggle">다크/라이트 모드 전환</button>
     </div>
 </nav>
@@ -67,7 +67,8 @@
         1. '+ 팔레트 추가' 버튼을 눌러 새 색상을 만드세요. (드래그로 순서 변경 가능)<br>
         2. 배경색을 지정하면 WCAG 대비에 맞춰 글씨색이 자동 계산됩니다. (수동 변경 가능)<br>
         3. 다크모드에서 다른 색상을 쓰고 싶다면 '다크모드 별도 색상'을 켜주세요.<br>
-        4. 완성된 JSON을 하단에서 복사하여 <code>wrangler.toml</code>의 <code>PALETTES</code> 항목에 붙여넣으세요.
+        4. 완성된 JSON을 하단에서 복사하여 <code>wrangler.toml</code>의 <code>PALETTES</code> 항목에 붙여넣으세요.<br>
+        <b>팔레트 기능은 더 이상 환경변수에 json값을 삽입하는 방식으로 작동하지 않고, DB와 관리자 UI에서 관리합니다.</b>
     </div>
 
     <!-- 팔레트 항목 리스트 -->
